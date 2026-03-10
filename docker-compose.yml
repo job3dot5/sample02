@@ -1,0 +1,18 @@
+
+services:
+  php:
+    build: ./docker/php
+    volumes:
+      - ./apps/api:/var/www/api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  nginx:
+    build: ./docker/nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./apps/api:/var/www/api
+    depends_on:
+      - php
