@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  docker-build-lint:
+    runs-on: ubuntu-latest
+    env:
+      API_MOUNT: ${{ github.workspace }}/apps/api:/var/www/api
+      API_WORKDIR: /var/www/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Cache vendor
+        uses: actions/cache@v4
+        with:
+          path: apps/api/vendor
+          key: ${{ runner.os }}-vendor-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-vendor-
+
+      - name: Build PHP image
+        run: docker build -t sample01-php -f docker/php/Dockerfile docker/php
+
+      - name: Install dependencies
+        run: |
+          docker run --rm \
+            -e COMPOSER_ALLOW_SUPERUSER=1 \
+            -e COMPOSER_CACHE_DIR=/tmp/composer-cache \
+            -v "$HOME/.composer/cache:/tmp/composer-cache" \
+            -v "$API_MOUNT" \
+            -w "$API_WORKDIR" \
+            sample01-php \
+            composer install --no-interaction --no-progress
+
+      - name: Lint (PHPStan)
+        run: |
+          docker run --rm \
+            -e COMPOSER_ALLOW_SUPERUSER=1 \
+            -v "$API_MOUNT" \
+            -w "$API_WORKDIR" \
+            sample01-php \
+            composer lint
+
+      - name: Code style (PHP CS Fixer)
+        run: |
+          docker run --rm \
+            -e COMPOSER_ALLOW_SUPERUSER=1 \
+            -v "$API_MOUNT" \
+            -w "$API_WORKDIR" \
+            sample01-php \
+            composer cs:check
+
+      - name: Tests (PHPUnit)
+        run: |
+          docker run --rm \
+            -e COMPOSER_ALLOW_SUPERUSER=1 \
+            -v "$API_MOUNT" \
+            -w "$API_WORKDIR" \
+            sample01-php \
+            composer test

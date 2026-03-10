@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+APP_DIR="$REPO_ROOT/apps/api"
+
+if [ ! -f "$APP_DIR/composer.json" ]; then
+  echo "composer.json not found at $APP_DIR" >&2
+  exit 1
+fi
+
+if command -v composer >/dev/null 2>&1; then
+  composer --working-dir="$APP_DIR" lint
+  exit 0
+fi
+
+if command -v docker >/dev/null 2>&1; then
+  docker compose -f "$REPO_ROOT/docker-compose.yml" exec -T php composer --working-dir=/var/www/api lint
+  exit 0
+fi
+
+echo "Neither composer nor docker is available; cannot run pre-push checks." >&2
+exit 1

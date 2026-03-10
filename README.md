@@ -1,16 +1,32 @@
-# sample02
+# Symfony Backend Technical Showcase
 
-Docker base environment for a Symfony API project:
-- `nginx` (HTTPS + domain routing)
-- `php-fpm` (PHP 8.3 + Composer + Xdebug)
+[![PHP](https://img.shields.io/badge/PHP-8.3-blue)](https://www.php.net/)
+[![Symfony](https://img.shields.io/badge/Symfony-LTS-black)](https://symfony.com/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![CI](https://github.com/job3dot5/sample02/actions/workflows/ci.yml/badge.svg)](https://github.com/job3dot5/sample02/actions)
 
-Current project state: `apps/api` is mounted in containers but no Symfony app is scaffolded yet.
+This repository contains a small Symfony API project used as a technical showcase.
+
+The goal is not to build a full API but to demonstrate clean architecture, development tooling, and a few features.
+
+The project includes a Docker development environment and a minimal Symfony application exposing technical endpoints and a protected dashboard.
 
 ## Stack
 
 - PHP 8.3 FPM
 - Nginx
 - Docker Compose
+
+## Development Tooling
+
+- PHPStan (static analysis)
+- PHP-CS-Fixer (code style)
+- PHPUnit
+- Git hooks (pre-commit / pre-push)
+- GitHub Actions CI
+
+More details about the Symfony application can be found in:
+[apps/api/README.md](apps/web/README.md)
 
 ## Local domain
 
@@ -56,8 +72,6 @@ docker compose up -d --build
 ```
 
 Open: `https://sample02.dev`
-
-If `apps/api` is still empty, the server response can be `File not found.` until a Symfony app is created.
 
 ## Stop
 
