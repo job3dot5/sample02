@@ -1,19 +1,23 @@
-# Symfony Backend Technical Showcase
+# Symfony REST API Technical Showcase
 
 [![PHP](https://img.shields.io/badge/PHP-8.3-blue)](https://www.php.net/)
 [![Symfony](https://img.shields.io/badge/Symfony-LTS-black)](https://symfony.com/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![CI](https://github.com/job3dot5/sample02/actions/workflows/ci.yml/badge.svg)](https://github.com/job3dot5/sample02/actions)
 
-This repository contains a small Symfony API project used as a technical showcase.
+This repository contains a small Symfony REST API project used as a technical showcase.
 
-The goal is not to build a full API but to demonstrate clean architecture, development tooling, and a few features.
+The goal is not to build a full product but to demonstrate pragmatic backend architecture, API contracts, authentication, and development tooling.
 
-The project includes a Docker development environment and a minimal Symfony application exposing technical endpoints and a protected dashboard.
+The project includes a Docker development environment and a minimal Symfony application exposing REST endpoints, OpenAPI documentation, and JWT-protected routes.
 
 ## Stack
 
 - PHP 8.3 FPM
+- Symfony 7.4
+- REST API (JSON)
+- OpenAPI 3.1 contract
+- JWT authentication (`lexik/jwt-authentication-bundle`)
 - Nginx
 - Docker Compose
 
@@ -26,7 +30,7 @@ The project includes a Docker development environment and a minimal Symfony appl
 - GitHub Actions CI
 
 More details about the Symfony application can be found in:
-[apps/api/README.md](apps/web/README.md)
+[apps/api/README.md](apps/api/README.md)
 
 ## Local domain
 

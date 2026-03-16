@@ -19,5 +19,24 @@ services:
     App\:
         resource: '../src/'
 
+    App\Controller\OpenApiController:
+        arguments:
+            $openApiSpecPath: '%kernel.project_dir%/openapi/openapi.yaml'
+
+    App\Security\ApiCredentialsAuthenticator:
+        arguments:
+            $apiUsername: '%env(API_USERNAME)%'
+            $apiPassword: '%env(API_PASSWORD)%'
+
+    App\Security\JwtCreatedSubscriber:
+        arguments:
+            $jwtIssuer: '%env(JWT_ISSUER)%'
+            $jwtAudience: '%env(JWT_AUDIENCE)%'
+
+    App\Security\JwtDecodedSubscriber:
+        arguments:
+            $jwtIssuer: '%env(JWT_ISSUER)%'
+            $jwtAudience: '%env(JWT_AUDIENCE)%'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
