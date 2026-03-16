@@ -7,12 +7,26 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    app.api_version: 'v1'
+    app.api_prefix: '/api/%app.api_version%'
+    app.error_urn_prefix: 'urn:sample02:error'
+    app.images.storage_root: '%kernel.project_dir%/var/storage/images'
+    app.images.directory.original: 'original'
+    app.images.directory.thumbnail: 'thumbnail'
+    app.images.directory.resized: 'resized'
+    app.images.thumbnail.max_width: 256
+    app.images.thumbnail.max_height: 256
+    app.images.resized.max_width: 1280
+    app.images.resized.max_height: 1280
+    app.images.upload.max_size_bytes: 5242880 # 5Mo
 
 services:
     # default configuration for services in *this* file
     _defaults:
         autowire: true      # Automatically injects dependencies in your services.
         autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
+        bind:
+            $urnErrorPrefix: '%app.error_urn_prefix%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name
@@ -21,12 +35,36 @@ services:
 
     App\Controller\OpenApiController:
         arguments:
-            $openApiSpecPath: '%kernel.project_dir%/openapi/openapi.yaml'
+            $openApiSpecPath: '%kernel.project_dir%/openapi/openapi.v1.yaml'
+
+    App\Controller\RootController:
+        arguments:
+            $apiPrefix: '%app.api_prefix%'
+
+    App\Controller\ImageController:
+        arguments:
+            $maxUploadSizeBytes: '%app.images.upload.max_size_bytes%'
+            $projectDir: '%kernel.project_dir%'
 
     App\Security\ApiCredentialsAuthenticator:
         arguments:
             $apiUsername: '%env(API_USERNAME)%'
             $apiPassword: '%env(API_PASSWORD)%'
+
+    App\Service\ImageService:
+        arguments:
+            $storageRoot: '%app.images.storage_root%'
+            $originalDirectory: '%app.images.directory.original%'
+            $thumbnailDirectory: '%app.images.directory.thumbnail%'
+            $resizedDirectory: '%app.images.directory.resized%'
+            $thumbnailMaxWidth: '%app.images.thumbnail.max_width%'
+            $thumbnailMaxHeight: '%app.images.thumbnail.max_height%'
+            $resizedMaxWidth: '%app.images.resized.max_width%'
+            $resizedMaxHeight: '%app.images.resized.max_height%'
+
+    App\EventSubscriber\ApiExceptionSubscriber:
+        arguments:
+            $apiPrefix: '%app.api_prefix%'
 
     App\Security\JwtCreatedSubscriber:
         arguments:

@@ -1,11 +1,11 @@
-# API Client Authentication Guide
+# API Client Guide
 
 ## Overview
 
 This API uses JWT bearer authentication (`lexik/jwt-authentication-bundle`).
 
 Authentication flow:
-- Call `POST /api/login` with JSON credentials to obtain a JWT.
+- Call `POST /api/v1/login` with JSON credentials to obtain a JWT.
 - Send this token on protected endpoints with `Authorization: Bearer <token>`.
 - Only the `Authorization` header extractor is enabled (no query parameter, no cookie).
 - API errors are returned as `application/problem+json`.
@@ -22,7 +22,7 @@ Authentication flow:
 Get a JWT token:
 
 ```bash
-curl -X POST http://localhost/api/login \
+curl -X POST http://localhost/api/v1/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"demo","password":"demo"}'
 ```
@@ -30,9 +30,113 @@ curl -X POST http://localhost/api/login \
 Call a protected endpoint:
 
 ```bash
-curl http://localhost/api/me \
+curl http://localhost/api/v1/me \
   -H "Authorization: Bearer <token>"
 ```
+
+Upload an image (JWT required):
+
+```bash
+curl -X POST http://localhost/api/v1/images \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@/path/to/image.jpg"
+```
+
+Render an image by id (JWT required):
+
+```bash
+curl http://localhost/api/v1/image/1 \
+  -H "Authorization: Bearer <token>"
+```
+
+Render a specific variant:
+
+```bash
+curl "http://localhost/api/v1/image/1?variant=thumbnail" \
+  -H "Authorization: Bearer <token>"
+```
+
+## Bruno API client use case (dev workflow) 
+https://www.usebruno.com/
+
+### 1. Environment variables
+
+In Bruno, define environment variables:
+- `username`
+- `password`
+
+### 2. Basic login request
+
+Create a request:
+- Method: `POST`
+- URL: `https://sample02.dev/api/v1/login`
+- Header: `Content-Type: application/json`
+- Header: `Accept: application/json`
+- Body (JSON):
+
+```json
+{
+  "username": "{{username}}",
+  "password": "{{password}}"
+}
+```
+
+### 3. Pre-request script (store JWT in `access_token`)
+
+Use this Bruno pre-request script:
+
+```javascript
+const username = String(bru.getEnvVar("username") || "");
+const password = String(bru.getEnvVar("password") || "");
+
+const res = await bru.sendRequest({
+  method: "POST",
+  url: "https://sample02.dev/api/v1/login",
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  },
+  data: { username, password }
+});
+
+console.log("status:", res.status);
+console.log("data:", res.data);
+console.log("body:", res.body);
+
+const payload =
+  res.data ??
+  (typeof res.body === "string" ? JSON.parse(res.body) : res.body);
+
+if (!payload?.token) {
+  throw new Error(`Token not found in response: ${JSON.stringify(res)}`);
+}
+
+bru.setVar("access_token", payload.token);
+```
+
+### 4. POST `/api/v1/images` with bearer token
+
+Create a second request:
+- Method: `POST`
+- URL: `https://sample02.dev/api/v1/images`
+- Header: `Authorization: Bearer {{access_token}}`
+- Body type: `multipart/form-data`
+- Field: `file` (type `file`)
+
+Note:
+- Keep Bruno auth mode disabled/none if you set `Authorization` manually in headers.
+
+### 5. GET `/api/v1/image/{id}` with bearer token
+
+Create a request:
+- Method: `GET`
+- URL: `https://sample02.dev/api/v1/image/{{image_id}}`
+- Optional query param: `variant` with `original`, `thumbnail`, or `resized`
+- Header: `Authorization: Bearer {{access_token}}`
+
+Example:
+- `https://sample02.dev/api/v1/image/1`
+- `https://sample02.dev/api/v1/image/1?variant=thumbnail`
 
 ## Public key usage (optional for API clients)
 

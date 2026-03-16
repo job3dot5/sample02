@@ -7,11 +7,11 @@ namespace App\Security;
 use Symfony\Component\Security\Core\User\InMemoryUser;
 use Symfony\Component\Security\Core\User\UserInterface;
 
-final class ApiCredentialsAuthenticator
+final readonly class ApiCredentialsAuthenticator
 {
     public function __construct(
-        private readonly string $apiUsername,
-        private readonly string $apiPassword,
+        private string $apiUsername,
+        private string $apiPassword,
     ) {
     }
 

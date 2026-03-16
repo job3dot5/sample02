@@ -8,11 +8,11 @@ use Lexik\Bundle\JWTAuthenticationBundle\Event\JWTCreatedEvent;
 use Lexik\Bundle\JWTAuthenticationBundle\Events;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
-final class JwtCreatedSubscriber implements EventSubscriberInterface
+final readonly class JwtCreatedSubscriber implements EventSubscriberInterface
 {
     public function __construct(
-        private readonly string $jwtIssuer,
-        private readonly string $jwtAudience,
+        private string $jwtIssuer,
+        private string $jwtAudience,
     ) {
     }
 

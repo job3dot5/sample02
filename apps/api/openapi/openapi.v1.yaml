@@ -1,0 +1,276 @@
+openapi: 3.1.0
+info:
+  title: Sample REST API
+  version: 1.0.0
+  description: Sample REST API v1 with JWT authentication.
+servers:
+  - url: /
+paths:
+  /api/v1/login:
+    post:
+      summary: Get JWT token
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid request payload
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Invalid credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/v1/me:
+    get:
+      summary: Authenticated user info
+      operationId: getMe
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '401':
+          description: Missing/invalid token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/images:
+    post:
+      summary: Upload and process image
+      operationId: uploadImage
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Image uploaded and processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageUploadResponse'
+        '400':
+          description: Invalid upload
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing/invalid token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '413':
+          description: Uploaded image too large
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          description: Image processing failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/image/{id}:
+    get:
+      summary: Render image binary by id
+      operationId: renderImage
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: variant
+          required: false
+          schema:
+            type: string
+            enum: [original, thumbnail, resized]
+            default: original
+      responses:
+        '200':
+          description: Image binary stream
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid variant
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing/invalid token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Image or file not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /docs/openapi.v1.yaml:
+    get:
+      summary: Download OpenAPI specification
+      operationId: getOpenApiSpec
+      responses:
+        '200':
+          description: OpenAPI YAML file
+          content:
+            application/yaml:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: demo
+        password:
+          type: string
+          example: demo
+    LoginResponse:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    Me:
+      type: object
+      required: [user, roles]
+      properties:
+        user:
+          type: string
+          example: demo
+        roles:
+          type: array
+          items:
+            type: string
+            example: ROLE_USER
+    Health:
+      type: object
+      required: [status, service]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: api
+    ImageUploadResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Image'
+    Image:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        original_filename:
+          type: string
+        mime_type:
+          type: string
+          example: image/jpeg
+        size_bytes:
+          type: integer
+          example: 123456
+        width:
+          type: integer
+          example: 1920
+        height:
+          type: integer
+          example: 1080
+        orientation:
+          type: string
+          enum: [landscape, portrait, square]
+        original_path:
+          type: string
+          example: var/storage/images/original/abc123.jpg
+        thumbnail_path:
+          type: string
+          example: var/storage/images/thumbnail/abc123.thumb.jpg
+        resized_path:
+          type: string
+          example: var/storage/images/resized/abc123.resized.jpg
+        created_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          example: urn:sample02:error:invalid-credentials
+        title:
+          type: string
+          example: Invalid credentials
+        status:
+          type: integer
+          example: 401
+        detail:
+          type: string

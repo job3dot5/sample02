@@ -11,7 +11,7 @@ use Symfony\Component\Security\Core\User\UserInterface;
 
 final class MeController extends AbstractApiController
 {
-    #[Route('/api/me', name: 'api_me', methods: ['GET'])]
+    #[Route('/me', name: 'me', methods: ['GET'])]
     public function __invoke(Security $security): JsonResponse
     {
         $user = $security->getUser();
@@ -19,7 +19,7 @@ final class MeController extends AbstractApiController
             return $this->problem(
                 JsonResponse::HTTP_UNAUTHORIZED,
                 'Unauthorized',
-                'urn:sample02:error:unauthorized',
+                $this->errorType('unauthorized'),
                 'Authentication is required.',
             );
         }

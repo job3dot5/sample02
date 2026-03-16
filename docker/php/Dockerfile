@@ -3,7 +3,14 @@ FROM php:8.3-fpm
 # System dependencies
 RUN apt-get update && apt-get install -y \
     git unzip libicu-dev libzip-dev \
-    && docker-php-ext-install intl pdo pdo_mysql zip opcache
+    libjpeg62-turbo-dev libpng-dev libwebp-dev libfreetype6-dev \
+    libmagickwand-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
+    && docker-php-ext-install intl pdo pdo_mysql zip opcache exif gd \
+    && pecl install imagick \
+    && docker-php-ext-enable imagick \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Xdebug
 RUN pecl install xdebug \

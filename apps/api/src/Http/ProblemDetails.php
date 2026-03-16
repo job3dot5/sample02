@@ -8,6 +8,11 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 
 final class ProblemDetails
 {
+    public static function errorType(string $urnPrefix, string $errorCode): string
+    {
+        return rtrim($urnPrefix, ':').':'.ltrim($errorCode, ':');
+    }
+
     /**
      * @param array<string,mixed> $extensions
      */

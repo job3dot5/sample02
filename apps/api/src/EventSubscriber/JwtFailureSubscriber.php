@@ -12,8 +12,12 @@ use Lexik\Bundle\JWTAuthenticationBundle\Events;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Response;
 
-final class JwtFailureSubscriber implements EventSubscriberInterface
+final readonly class JwtFailureSubscriber implements EventSubscriberInterface
 {
+    public function __construct(private string $urnErrorPrefix)
+    {
+    }
+
     public static function getSubscribedEvents(): array
     {
         return [
@@ -28,7 +32,7 @@ final class JwtFailureSubscriber implements EventSubscriberInterface
         $event->setResponse(ProblemDetails::response(
             Response::HTTP_UNAUTHORIZED,
             'Missing token',
-            'urn:sample02:error:token-missing',
+            ProblemDetails::errorType($this->urnErrorPrefix, 'token-missing'),
             'Bearer token not found in Authorization header.',
         ));
     }
@@ -38,7 +42,7 @@ final class JwtFailureSubscriber implements EventSubscriberInterface
         $event->setResponse(ProblemDetails::response(
             Response::HTTP_UNAUTHORIZED,
             'Invalid token',
-            'urn:sample02:error:token-invalid',
+            ProblemDetails::errorType($this->urnErrorPrefix, 'token-invalid'),
             'Bearer token is invalid.',
         ));
     }
@@ -48,7 +52,7 @@ final class JwtFailureSubscriber implements EventSubscriberInterface
         $event->setResponse(ProblemDetails::response(
             Response::HTTP_UNAUTHORIZED,
             'Expired token',
-            'urn:sample02:error:token-expired',
+            ProblemDetails::errorType($this->urnErrorPrefix, 'token-expired'),
             'Bearer token has expired.',
         ));
     }

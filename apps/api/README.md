@@ -12,9 +12,10 @@ The goal of this application is to illustrate pragmatic API development practice
 
 ## Features Demonstrated
 - REST API without API Platform (explicit controllers/routes)
-- Contract-first OpenAPI (`openapi/openapi.yaml`)
-- Minimal health endpoint (`/api/health`)
+- Contract-first OpenAPI (`openapi/openapi.v1.yaml`)
+- Minimal health endpoint (`/api/v1/health`)
 - JWT authentication with `lexik/jwt-authentication-bundle`
+- Authenticated image processing pipeline (upload, thumbnail, metadata, orientation, resize)
 
 
 ## Screenshots
@@ -24,7 +25,7 @@ The goal of this application is to illustrate pragmatic API development practice
 - PHP 8
 - Symfony (LTS)
 - REST API (JSON + Symfony Routing/Controllers)
-- OpenAPI 3.1 (`openapi/openapi.yaml`)
+- OpenAPI 3.1 (`openapi/openapi.v1.yaml`)
 - JWT auth (`lexik/jwt-authentication-bundle`, bearer tokens)
 - Doctrine DBAL
 - SQLite (database file: `var/app.db`)
@@ -32,10 +33,12 @@ The goal of this application is to illustrate pragmatic API development practice
 
 ## Demo endpoints
 
-- `POST /api/login` (body: `{"username":"<API_USERNAME>","password":"<API_PASSWORD>"}`)
-- `GET /api/health`
-- `GET /api/me` (requires `Authorization: Bearer <token>`)
-- `GET /docs/openapi.yaml`
+- `POST /api/v1/login` (body: `{"username":"<API_USERNAME>","password":"<API_PASSWORD>"}`)
+- `GET /api/v1/health`
+- `GET /api/v1/me` (requires `Authorization: Bearer <token>`)
+- `POST /api/v1/images` (multipart field `file`, requires `Authorization: Bearer <token>`)
+- `GET /api/v1/image/{id}?variant=original|thumbnail|resized` (requires `Authorization: Bearer <token>`)
+- `GET /docs/openapi.v1.yaml`
 
 API client authentication details are documented in [docs/api-client-auth.md](docs/api-client-auth.md).
 Error responses follow `application/problem+json`.

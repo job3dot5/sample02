@@ -11,8 +11,14 @@ use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
 
-final class ApiExceptionSubscriber implements EventSubscriberInterface
+final readonly class ApiExceptionSubscriber implements EventSubscriberInterface
 {
+    public function __construct(
+        private string $apiPrefix,
+        private string $urnErrorPrefix,
+    ) {
+    }
+
     public static function getSubscribedEvents(): array
     {
         return [
@@ -23,7 +29,7 @@ final class ApiExceptionSubscriber implements EventSubscriberInterface
     public function onKernelException(ExceptionEvent $event): void
     {
         $request = $event->getRequest();
-        if (!str_starts_with($request->getPathInfo(), '/api')) {
+        if (!str_starts_with($request->getPathInfo(), $this->apiPrefix)) {
             return;
         }
 
@@ -48,7 +54,7 @@ final class ApiExceptionSubscriber implements EventSubscriberInterface
         $event->setResponse(ProblemDetails::response(
             $status,
             $title,
-            sprintf('urn:sample02:error:http-%d', $status),
+            ProblemDetails::errorType($this->urnErrorPrefix, sprintf('http-%d', $status)),
             $detail,
         ));
     }

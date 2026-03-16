@@ -11,13 +11,13 @@ security:
             pattern: ^/(_profiler|_wdt|assets|build)/
             security: false
         api:
-            pattern: ^/api
+            pattern: '^%app.api_prefix%'
             stateless: true
             provider: app_users
             jwt: ~
 
     access_control:
-        - { path: ^/api/login, roles: PUBLIC_ACCESS }
-        - { path: ^/api/health, roles: PUBLIC_ACCESS }
-        - { path: ^/docs/openapi.yaml, roles: PUBLIC_ACCESS }
-        - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
+        - { path: '^%app.api_prefix%/login', roles: PUBLIC_ACCESS }
+        - { path: '^%app.api_prefix%/health', roles: PUBLIC_ACCESS }
+        - { path: ^/docs/openapi\.v1\.yaml$, roles: PUBLIC_ACCESS }
+        - { path: '^%app.api_prefix%', roles: IS_AUTHENTICATED_FULLY }

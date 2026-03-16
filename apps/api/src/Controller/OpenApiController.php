@@ -7,13 +7,13 @@ namespace App\Controller;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
-final class OpenApiController
+final readonly class OpenApiController
 {
-    public function __construct(private readonly string $openApiSpecPath)
+    public function __construct(private string $openApiSpecPath)
     {
     }
 
-    #[Route('/docs/openapi.yaml', name: 'openapi_spec', methods: ['GET'])]
+    #[Route('/docs/openapi.v1.yaml', name: 'openapi_spec', methods: ['GET'])]
     public function spec(): Response
     {
         if (!is_file($this->openApiSpecPath)) {

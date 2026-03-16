@@ -15,10 +15,12 @@ final class LoginController extends AbstractApiController
     public function __construct(
         private readonly ApiCredentialsAuthenticator $credentialsAuthenticator,
         private readonly JWTTokenManagerInterface $jwtTokenManager,
+        string $urnErrorPrefix,
     ) {
+        parent::__construct($urnErrorPrefix);
     }
 
-    #[Route('/api/login', name: 'api_login', methods: ['POST'])]
+    #[Route('/login', name: 'login', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
         $payload = json_decode((string) $request->getContent(), true);
@@ -26,7 +28,7 @@ final class LoginController extends AbstractApiController
             return $this->problem(
                 JsonResponse::HTTP_BAD_REQUEST,
                 'Bad Request',
-                'urn:sample02:error:invalid-json',
+                $this->errorType('invalid-json'),
                 'Invalid JSON body.',
             );
         }
@@ -37,7 +39,7 @@ final class LoginController extends AbstractApiController
             return $this->problem(
                 JsonResponse::HTTP_BAD_REQUEST,
                 'Bad Request',
-                'urn:sample02:error:missing-credentials',
+                $this->errorType('missing-credentials'),
                 'username and password are required.',
             );
         }
@@ -47,7 +49,7 @@ final class LoginController extends AbstractApiController
             return $this->problem(
                 JsonResponse::HTTP_UNAUTHORIZED,
                 'Invalid credentials',
-                'urn:sample02:error:invalid-credentials',
+                $this->errorType('invalid-credentials'),
                 'Username or password is incorrect.',
             );
         }

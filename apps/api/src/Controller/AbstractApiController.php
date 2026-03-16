@@ -10,6 +10,10 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 
 abstract class AbstractApiController extends AbstractController
 {
+    public function __construct(private readonly string $urnErrorPrefix)
+    {
+    }
+
     /**
      * @param array<string,mixed> $extensions
      */
@@ -21,5 +25,10 @@ abstract class AbstractApiController extends AbstractController
         array $extensions = [],
     ): JsonResponse {
         return ProblemDetails::response($status, $title, $type, $detail, $extensions);
+    }
+
+    protected function errorType(string $errorCode): string
+    {
+        return ProblemDetails::errorType($this->urnErrorPrefix, $errorCode);
     }
 }

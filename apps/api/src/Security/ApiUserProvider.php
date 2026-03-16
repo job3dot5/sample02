@@ -12,9 +12,9 @@ use Symfony\Component\Security\Core\User\UserProviderInterface;
 /**
  * @implements UserProviderInterface<UserInterface>
  */
-final class ApiUserProvider implements UserProviderInterface
+final readonly class ApiUserProvider implements UserProviderInterface
 {
-    public function __construct(private readonly ApiCredentialsAuthenticator $credentialsAuthenticator)
+    public function __construct(private ApiCredentialsAuthenticator $credentialsAuthenticator)
     {
     }
 
