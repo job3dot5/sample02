@@ -2,6 +2,7 @@
 services:
   php:
     build: ./docker/php
+    command: ["/bin/bash", "-lc", "/var/www/api/bin/runtime-permissions.sh init && exec php-fpm"]
     volumes:
       - ./apps/api:/var/www/api
     extra_hosts:
@@ -14,5 +15,17 @@ services:
       - "443:443"
     volumes:
       - ./apps/api:/var/www/api
+    depends_on:
+      - php
+
+  # message queue worker
+  worker:
+    build: ./docker/php
+    command: ["/bin/bash", "-lc", "/var/www/api/bin/runtime-permissions.sh init && php /var/www/api/bin/console messenger:setup-transports --no-interaction && php /var/www/api/bin/console messenger:consume transport_async_images --time-limit=3600 --memory-limit=256M --no-interaction"]
+    restart: unless-stopped
+    volumes:
+      - ./apps/api:/var/www/api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - php

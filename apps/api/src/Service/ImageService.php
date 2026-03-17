@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Repository\ImageRepository;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Psr\Log\LoggerInterface;
 
 final readonly class ImageService
 {
@@ -19,43 +19,92 @@ final readonly class ImageService
         private int $resizedMaxWidth,
         private int $resizedMaxHeight,
         private ImageRepository $imageRepository,
+        private LoggerInterface $imageProcessingLogger,
     ) {
     }
 
-    /**
-     * @return array<string,mixed>
-     */
-    public function handleUpload(UploadedFile $file): array
+    public function processStagedUpload(string $stagedPath, string $originalFilename, string $mimeType): void
     {
-        if (!class_exists(\Imagick::class)) {
-            throw new \RuntimeException('Imagick extension is required for image processing.');
-        }
+        $this->ensureImagickIsAvailable();
+        $mimeType = $this->validateImageMimeType($mimeType);
 
-        $mimeType = $file->getMimeType() ?? '';
-        if (!str_starts_with($mimeType, 'image/')) {
-            throw new \InvalidArgumentException('Uploaded file must be an image.');
+        if (!is_file($stagedPath)) {
+            throw new \InvalidArgumentException(sprintf('Staged upload "%s" was not found.', $stagedPath));
         }
+        $this->imageProcessingLogger->info('image.processing.started', [
+            'staged_path' => $stagedPath,
+            'original_filename' => $originalFilename,
+            'mime_type' => $mimeType,
+        ]);
 
         $partition = (new \DateTimeImmutable())->format('Y-m');
         $this->ensureStorageDirectories($partition);
 
-        $extension = $file->guessExtension() ?: 'bin';
+        $extension = pathinfo($stagedPath, \PATHINFO_EXTENSION);
+        $extension = '' !== $extension ? strtolower($extension) : 'bin';
         $basename = bin2hex(random_bytes(12));
 
-        $originalName = sprintf('%s.%s', $basename, $extension);
-        $originalFile = $file->move($this->originalDir($partition), $originalName);
-        $originalPath = $originalFile->getPathname();
+        $originalPath = sprintf('%s/%s.%s', $this->originalDir($partition), $basename, $extension);
+        $thumbnailPath = sprintf('%s/%s.thumb.%s', $this->thumbnailDir($partition), $basename, $extension);
+        $resizedPath = sprintf('%s/%s.resized.%s', $this->resizedDir($partition), $basename, $extension);
 
+        if (!copy($stagedPath, $originalPath)) {
+            throw new \RuntimeException('Unable to copy staged upload into original image storage.');
+        }
+        $this->assertFileExists($originalPath, 'original image');
+        $this->imageProcessingLogger->info('image.processing.copied_to_original', [
+            'staged_path' => $stagedPath,
+            'original_path' => $originalPath,
+        ]);
+
+        try {
+            $imageId = $this->processStoredOriginal(
+                $originalPath,
+                $thumbnailPath,
+                $resizedPath,
+                $originalFilename,
+                $mimeType,
+            );
+            $this->imageProcessingLogger->info('image.processing.persisted', [
+                'image_id' => $imageId,
+                'original_path' => $originalPath,
+                'thumbnail_path' => $thumbnailPath,
+                'resized_path' => $resizedPath,
+            ]);
+        } catch (\Throwable $exception) {
+            $this->cleanupFiles([$originalPath, $thumbnailPath, $resizedPath]);
+            $this->imageProcessingLogger->warning('image.processing.cleanup_after_failure', [
+                'staged_path' => $stagedPath,
+                'original_path' => $originalPath,
+                'thumbnail_path' => $thumbnailPath,
+                'resized_path' => $resizedPath,
+                'error' => $exception->getMessage(),
+            ]);
+            throw $exception;
+        }
+
+        @unlink($stagedPath);
+        $this->imageProcessingLogger->info('image.processing.completed', [
+            'image_id' => $imageId,
+            'staged_path' => $stagedPath,
+            'original_filename' => $originalFilename,
+        ]);
+    }
+
+    private function processStoredOriginal(
+        string $originalPath,
+        string $thumbnailPath,
+        string $resizedPath,
+        string $originalFilename,
+        string $mimeType,
+    ): int {
         [$width, $height] = $this->readDimensions($originalPath);
         $orientation = $this->detectOrientation($width, $height);
 
-        $thumbnailName = sprintf('%s.thumb.%s', $basename, $extension);
-        $resizedName = sprintf('%s.resized.%s', $basename, $extension);
-        $thumbnailPath = $this->thumbnailDir($partition).'/'.$thumbnailName;
-        $resizedPath = $this->resizedDir($partition).'/'.$resizedName;
-
         $this->generateThumbnail($originalPath, $thumbnailPath);
         $this->generateResized($originalPath, $resizedPath, $width, $height);
+        $this->assertFileExists($thumbnailPath, 'thumbnail image');
+        $this->assertFileExists($resizedPath, 'resized image');
 
         $metadata = [
             'mimeType' => $mimeType,
@@ -66,27 +115,38 @@ final readonly class ImageService
             'processor' => 'imagick',
         ];
 
-        $id = $this->imageRepository->create([
-            'original_filename' => $file->getClientOriginalName(),
-            'mime_type' => $mimeType,
-            'size_bytes' => (int) $metadata['sizeBytes'],
-            'width' => $width,
-            'height' => $height,
-            'orientation' => $orientation,
-            'metadata_json' => json_encode($metadata, \JSON_THROW_ON_ERROR),
-            'original_path' => $this->relativePath($originalPath),
-            'thumbnail_path' => $this->relativePath($thumbnailPath),
-            'resized_path' => $this->relativePath($resizedPath),
-        ]);
+        try {
+            return $this->imageRepository->create([
+                'original_filename' => $originalFilename,
+                'mime_type' => $mimeType,
+                'size_bytes' => (int) $metadata['sizeBytes'],
+                'width' => $width,
+                'height' => $height,
+                'orientation' => $orientation,
+                'metadata_json' => json_encode($metadata, \JSON_THROW_ON_ERROR),
+                'original_path' => $this->relativePath($originalPath),
+                'thumbnail_path' => $this->relativePath($thumbnailPath),
+                'resized_path' => $this->relativePath($resizedPath),
+            ]);
+        } catch (\Throwable $exception) {
+            throw new \RuntimeException('Unable to persist image metadata row.', 0, $exception);
+        }
+    }
 
-        $saved = $this->imageRepository->find($id);
-        if (null === $saved) {
-            throw new \RuntimeException('Image row was not found after insert.');
+    private function ensureImagickIsAvailable(): void
+    {
+        if (!class_exists(\Imagick::class)) {
+            throw new \RuntimeException('Imagick extension is required for image processing.');
+        }
+    }
+
+    private function validateImageMimeType(string $mimeType): string
+    {
+        if (!str_starts_with($mimeType, 'image/')) {
+            throw new \InvalidArgumentException('Uploaded file must be an image.');
         }
 
-        $saved['metadata'] = json_decode((string) $saved['metadata_json'], true);
-
-        return $saved;
+        return $mimeType;
     }
 
     private function generateThumbnail(string $sourcePath, string $targetPath): void
@@ -164,5 +224,24 @@ final readonly class ImageService
         $projectDir = dirname($this->storageRoot, 3);
 
         return ltrim(str_replace($projectDir, '', $absolutePath), '/');
+    }
+
+    private function assertFileExists(string $path, string $label): void
+    {
+        if (!is_file($path)) {
+            throw new \RuntimeException(sprintf('Generated %s file was not found at "%s".', $label, $path));
+        }
+    }
+
+    /**
+     * @param list<string> $paths
+     */
+    private function cleanupFiles(array $paths): void
+    {
+        foreach ($paths as $path) {
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
     }
 }

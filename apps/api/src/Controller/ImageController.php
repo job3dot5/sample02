@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Repository\ImageRepository;
-use App\Service\ImageService;
+use App\Service\ImageUploadQueueService;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -82,22 +82,17 @@ final class ImageController extends AbstractApiController
         }
 
         $normalized = ltrim($relativePath, '/');
-        $candidates = [$this->projectDir.'/'.$normalized];
-        if (!str_starts_with($normalized, 'var/')) {
-            $candidates[] = $this->projectDir.'/var/'.$normalized;
-        }
+        $path = $this->projectDir.'/'.$normalized;
 
-        foreach ($candidates as $path) {
-            if (is_file($path)) {
-                return $path;
-            }
+        if (is_file($path)) {
+            return $path;
         }
 
         return null;
     }
 
     #[Route('/images', name: 'image_upload', methods: ['POST'])]
-    public function upload(Request $request, ImageService $imageService): JsonResponse
+    public function upload(Request $request, ImageUploadQueueService $imageUploadQueueService): JsonResponse
     {
         $file = $request->files->get('file');
         if (!$file instanceof UploadedFile) {
@@ -138,7 +133,7 @@ final class ImageController extends AbstractApiController
         }
 
         try {
-            $savedImage = $imageService->handleUpload($file);
+            $jobId = $imageUploadQueueService->queueUpload($file);
         } catch (\InvalidArgumentException $exception) {
             return $this->problem(
                 Response::HTTP_BAD_REQUEST,
@@ -146,15 +141,20 @@ final class ImageController extends AbstractApiController
                 $this->errorType('image-upload-invalid'),
                 $exception->getMessage(),
             );
-        } catch (\Throwable $exception) {
+        } catch (\RuntimeException $exception) {
             return $this->problem(
                 Response::HTTP_INTERNAL_SERVER_ERROR,
-                'Image processing failed',
-                $this->errorType('image-processing-failed'),
+                'Image queueing failed',
+                $this->errorType('image-queueing-failed'),
                 $exception->getMessage(),
             );
         }
 
-        return new JsonResponse(['data' => $savedImage], Response::HTTP_CREATED);
+        return new JsonResponse([
+            'data' => [
+                'job_id' => $jobId,
+                'status' => 'queued',
+            ],
+        ], Response::HTTP_ACCEPTED);
     }
 }

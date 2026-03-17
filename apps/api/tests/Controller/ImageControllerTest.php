@@ -6,12 +6,16 @@ namespace App\Tests\Controller;
 
 use App\Controller\ImageController;
 use App\Repository\ImageRepository;
-use App\Service\ImageService;
+use App\Service\ImageUploadQueueService;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\StampInterface;
 
 final class ImageControllerTest extends TestCase
 {
@@ -34,7 +38,7 @@ final class ImageControllerTest extends TestCase
     {
         $controller = $this->createController();
 
-        $response = $controller->upload(Request::create('/images', 'POST'), $this->createImageService());
+        $response = $controller->upload(Request::create('/images', 'POST'), $this->createImageUploadQueueService());
 
         self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         self::assertSame('application/problem+json', $response->headers->get('content-type'));
@@ -52,7 +56,7 @@ final class ImageControllerTest extends TestCase
 
         $uploadedFile = new UploadedFile($path, 'invalid.bin', null, \UPLOAD_ERR_CANT_WRITE, true);
         $request = $this->requestWithFile($uploadedFile);
-        $response = $controller->upload($request, $this->createImageService());
+        $response = $controller->upload($request, $this->createImageUploadQueueService());
 
         self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         self::assertSame('application/problem+json', $response->headers->get('content-type'));
@@ -70,7 +74,7 @@ final class ImageControllerTest extends TestCase
 
         $uploadedFile = new UploadedFile($path, 'too-large.bin', 'application/octet-stream', null, true);
         $request = $this->requestWithFile($uploadedFile);
-        $response = $controller->upload($request, $this->createImageService());
+        $response = $controller->upload($request, $this->createImageUploadQueueService());
 
         self::assertSame(Response::HTTP_REQUEST_ENTITY_TOO_LARGE, $response->getStatusCode());
         self::assertSame('application/problem+json', $response->headers->get('content-type'));
@@ -80,19 +84,15 @@ final class ImageControllerTest extends TestCase
         );
     }
 
-    public function testUploadReturnsBadRequestWhenServiceRejectsNonImage(): void
+    public function testUploadReturnsBadRequestWhenQueuedFileIsNotAnImage(): void
     {
-        if (!class_exists(\Imagick::class)) {
-            self::markTestSkipped('Imagick extension is required for ImageController image tests.');
-        }
-
         $controller = $this->createController();
         $path = $this->tmpDir.'/not-image.txt';
         file_put_contents($path, 'not an image');
 
         $uploadedFile = new UploadedFile($path, 'not-image.txt', 'text/plain', null, true);
         $request = $this->requestWithFile($uploadedFile);
-        $response = $controller->upload($request, $this->createImageService());
+        $response = $controller->upload($request, $this->createImageUploadQueueService());
 
         self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         self::assertSame('application/problem+json', $response->headers->get('content-type'));
@@ -102,13 +102,14 @@ final class ImageControllerTest extends TestCase
         );
     }
 
-    public function testUploadReturnsCreatedForValidImage(): void
+    public function testUploadReturnsAcceptedForValidImage(): void
     {
         if (!class_exists(\Imagick::class)) {
             self::markTestSkipped('Imagick extension is required for ImageController image tests.');
         }
 
         $controller = $this->createController();
+        $messageBus = new InMemoryMessageBus();
         $uploadedFile = new UploadedFile(
             $this->createJpegFixture(1200, 800),
             'fixture.jpg',
@@ -117,15 +118,19 @@ final class ImageControllerTest extends TestCase
             true,
         );
 
-        $response = $controller->upload($this->requestWithFile($uploadedFile), $this->createImageService());
+        $response = $controller->upload(
+            $this->requestWithFile($uploadedFile),
+            $this->createImageUploadQueueService($messageBus),
+        );
         $payload = json_decode((string) $response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
-        self::assertSame(Response::HTTP_CREATED, $response->getStatusCode());
+        self::assertSame(Response::HTTP_ACCEPTED, $response->getStatusCode());
         self::assertSame('application/json', $response->headers->get('content-type'));
         self::assertIsArray($payload);
         self::assertArrayHasKey('data', $payload);
-        self::assertSame('fixture.jpg', $payload['data']['original_filename']);
-        self::assertSame('landscape', $payload['data']['orientation']);
+        self::assertSame('queued', $payload['data']['status']);
+        self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/', (string) $payload['data']['job_id']);
+        self::assertCount(1, $messageBus->messages);
     }
 
     public function testRenderReturnsBadRequestWhenVariantIsInvalid(): void
@@ -207,55 +212,22 @@ final class ImageControllerTest extends TestCase
         self::assertStringContainsString('inline', (string) $response->headers->get('content-disposition'));
     }
 
-    public function testRenderSupportsLegacyStoragePathWithoutVarPrefix(): void
-    {
-        $controller = $this->createController();
-        $repository = $this->createImageRepository();
-        $legacyRelativePath = 'storage/images/original/2026-03/legacy.jpg';
-        $absolutePath = $this->projectDir().'/var/'.$legacyRelativePath;
-        $this->ensureDirectory(dirname($absolutePath));
-        file_put_contents($absolutePath, 'jpeg-content');
-
-        $id = $repository->create([
-            'original_filename' => 'legacy.jpg',
-            'mime_type' => 'image/jpeg',
-            'size_bytes' => 12,
-            'width' => 100,
-            'height' => 100,
-            'orientation' => 'square',
-            'metadata_json' => '{}',
-            'original_path' => $legacyRelativePath,
-            'thumbnail_path' => 'storage/images/thumbnail/2026-03/legacy.thumb.jpg',
-            'resized_path' => 'storage/images/resized/2026-03/legacy.resized.jpg',
-        ]);
-
-        $response = $controller->renderImage($id, Request::create(sprintf('/image/%d', $id), 'GET'), $repository);
-
-        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
-        self::assertSame('image/jpeg', $response->headers->get('content-type'));
-    }
-
     private function requestWithFile(UploadedFile $file): Request
     {
         return Request::create('/images', 'POST', [], [], ['file' => $file]);
     }
 
-    private function createImageService(): ImageService
+    private function createImageUploadQueueService(?MessageBusInterface $messageBus = null): ImageUploadQueueService
     {
-        $repository = $this->createImageRepository();
         $storageRoot = $this->projectDir().'/var/storage/images';
         $this->ensureDirectory($storageRoot);
+        $messageBus ??= new InMemoryMessageBus();
 
-        return new ImageService(
+        return new ImageUploadQueueService(
             $storageRoot,
-            'original',
-            'thumbnail',
-            'resized',
-            256,
-            256,
-            1280,
-            1280,
-            $repository,
+            'pending',
+            $messageBus,
+            new NullLogger(),
         );
     }
 
@@ -319,5 +291,21 @@ final class ImageControllerTest extends TestCase
         }
 
         rmdir($dir);
+    }
+}
+
+final class InMemoryMessageBus implements MessageBusInterface
+{
+    /** @var list<object> */
+    public array $messages = [];
+
+    /**
+     * @param array<StampInterface> $stamps
+     */
+    public function dispatch(object $message, array $stamps = []): Envelope
+    {
+        $this->messages[] = $message;
+
+        return new Envelope($message, $stamps);
     }
 }

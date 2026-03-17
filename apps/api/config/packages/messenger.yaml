@@ -1,0 +1,27 @@
+framework:
+    messenger:
+        failure_transport: transport_failed_images
+
+        transports:
+            transport_async_images:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    use_notify: true
+                    check_delayed_interval: 60000
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000
+                    multiplier: 2
+                    max_delay: 10000
+                    jitter: 0.1
+            transport_failed_images: '%env(MESSENGER_FAILED_TRANSPORT_DSN)%'
+
+        routing:
+            App\Message\ProcessImageUploadMessage: transport_async_images
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                transport_async_images: 'in-memory://'
+                transport_failed_images: 'in-memory://'

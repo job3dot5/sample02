@@ -18,6 +18,7 @@ The project includes a Docker development environment and a minimal Symfony appl
 - REST API (JSON)
 - OpenAPI 3.1 contract
 - JWT authentication (`lexik/jwt-authentication-bundle`)
+- Async message queue for image processing (`symfony/messenger` + Doctrine transport + Docker worker)
 - Nginx
 - Docker Compose
 
@@ -76,6 +77,20 @@ docker compose up -d --build
 ```
 
 Open: `https://sample02.dev`
+
+The `worker` service consumes `transport_async_images` messages to process image uploads asynchronously.
+
+For first-time app bootstrap inside `apps/api`, run:
+
+```bash
+make setup
+```
+
+You can validate writable runtime paths and key files with:
+
+```bash
+make doctor
+```
 
 ## Stop
 

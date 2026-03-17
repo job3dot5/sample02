@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Sample REST API
   version: 1.0.0
-  description: Sample REST API v1 with JWT authentication.
+  description: Sample REST API v1 with JWT authentication and message queue.
 servers:
   - url: /
 paths:
@@ -67,7 +67,7 @@ paths:
                 $ref: '#/components/schemas/Problem'
   /api/v1/images:
     post:
-      summary: Upload and process image
+      summary: Upload image and queue processing
       operationId: uploadImage
       security:
         - bearerAuth: []
@@ -83,12 +83,12 @@ paths:
                   type: string
                   format: binary
       responses:
-        '201':
-          description: Image uploaded and processed
+        '202':
+          description: Image accepted and queued for asynchronous processing
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ImageUploadResponse'
+                $ref: '#/components/schemas/ImageUploadQueuedResponse'
         '400':
           description: Invalid upload
           content:
@@ -108,7 +108,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '500':
-          description: Image processing failure
+          description: Image queueing failure
           content:
             application/problem+json:
               schema:
@@ -215,12 +215,22 @@ components:
         service:
           type: string
           example: api
-    ImageUploadResponse:
+    ImageUploadQueuedResponse:
       type: object
       required: [data]
       properties:
         data:
-          $ref: '#/components/schemas/Image'
+          $ref: '#/components/schemas/ImageUploadQueued'
+    ImageUploadQueued:
+      type: object
+      required: [job_id, status]
+      properties:
+        job_id:
+          type: string
+          example: 2cf8bd7572819cdb2288f72389f96a53
+        status:
+          type: string
+          example: queued
     Image:
       type: object
       properties:

@@ -8,7 +8,7 @@ use App\Repository\ImageRepository;
 use App\Service\ImageService;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Psr\Log\NullLogger;
 
 final class ImageServiceTest extends TestCase
 {
@@ -29,10 +29,10 @@ final class ImageServiceTest extends TestCase
         $this->removeDirectory($this->tmpDir);
     }
 
-    public function testHandleUploadCreatesFilesAndPersistsRow(): void
+    public function testProcessStagedUploadCreatesFilesAndPersistsRow(): void
     {
-        $uploadedPath = $this->createJpegFixture(1200, 800);
-        $uploadedFile = new UploadedFile($uploadedPath, 'fixture.jpg', 'image/jpeg', null, true);
+        $stagedPath = $this->tmpDir.'/staged.fixture.jpg';
+        copy($this->createJpegFixture(1200, 800), $stagedPath);
 
         $connection = DriverManager::getConnection([
             'driver' => 'pdo_sqlite',
@@ -52,9 +52,14 @@ final class ImageServiceTest extends TestCase
             1280,
             1280,
             $repository,
+            new NullLogger(),
         );
 
-        $saved = $service->handleUpload($uploadedFile);
+        $service->processStagedUpload($stagedPath, 'fixture.jpg', 'image/jpeg');
+        self::assertFileDoesNotExist($stagedPath);
+        $saved = $repository->find(1);
+        self::assertIsArray($saved);
+        $saved['metadata'] = json_decode((string) $saved['metadata_json'], true);
 
         self::assertSame('fixture.jpg', $saved['original_filename']);
         self::assertSame('image/jpeg', $saved['mime_type']);
@@ -71,11 +76,10 @@ final class ImageServiceTest extends TestCase
         self::assertFileExists($projectRoot.'/'.$saved['resized_path']);
     }
 
-    public function testHandleUploadRejectsNonImageFile(): void
+    public function testProcessStagedUploadRejectsNonImageFile(): void
     {
-        $txtPath = $this->tmpDir.'/fixture.txt';
-        file_put_contents($txtPath, 'not an image');
-        $uploadedFile = new UploadedFile($txtPath, 'fixture.txt', 'text/plain', null, true);
+        $stagedPath = $this->tmpDir.'/staged.fixture.txt';
+        file_put_contents($stagedPath, 'not an image');
 
         $connection = DriverManager::getConnection([
             'driver' => 'pdo_sqlite',
@@ -95,18 +99,19 @@ final class ImageServiceTest extends TestCase
             1280,
             1280,
             $repository,
+            new NullLogger(),
         );
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Uploaded file must be an image.');
 
-        $service->handleUpload($uploadedFile);
+        $service->processStagedUpload($stagedPath, 'fixture.txt', 'text/plain');
     }
 
-    public function testHandleUploadDoesNotUpscaleSmallImages(): void
+    public function testProcessStagedUploadDoesNotUpscaleSmallImages(): void
     {
-        $uploadedPath = $this->createJpegFixture(640, 480);
-        $uploadedFile = new UploadedFile($uploadedPath, 'small.jpg', 'image/jpeg', null, true);
+        $stagedPath = $this->tmpDir.'/staged.small.jpg';
+        copy($this->createJpegFixture(640, 480), $stagedPath);
 
         $connection = DriverManager::getConnection([
             'driver' => 'pdo_sqlite',
@@ -126,9 +131,12 @@ final class ImageServiceTest extends TestCase
             1280,
             1280,
             $repository,
+            new NullLogger(),
         );
 
-        $saved = $service->handleUpload($uploadedFile);
+        $service->processStagedUpload($stagedPath, 'small.jpg', 'image/jpeg');
+        $saved = $repository->find(1);
+        self::assertIsArray($saved);
         $projectRoot = dirname($storageRoot, 3);
         $resizedPath = $projectRoot.'/'.$saved['resized_path'];
 

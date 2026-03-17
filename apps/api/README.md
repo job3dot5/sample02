@@ -15,20 +15,20 @@ The goal of this application is to illustrate pragmatic API development practice
 - Contract-first OpenAPI (`openapi/openapi.v1.yaml`)
 - Minimal health endpoint (`/api/v1/health`)
 - JWT authentication with `lexik/jwt-authentication-bundle`
-- Authenticated image processing pipeline (upload, thumbnail, metadata, orientation, resize)
+- Authenticated async image processing pipeline (`symfony/messenger` + Doctrine transport + worker)
 
 
 ## Screenshots
 
 ## Technical Stack
 
-- PHP 8
+- PHP 8.3
 - Symfony (LTS)
 - REST API (JSON + Symfony Routing/Controllers)
 - OpenAPI 3.1 (`openapi/openapi.v1.yaml`)
 - JWT auth (`lexik/jwt-authentication-bundle`, bearer tokens)
 - Doctrine DBAL
-- SQLite (database file: `var/app.db`)
+- SQLite (database file: `var/data.db`)
 - Docker / Docker Compose
 
 ## Demo endpoints
@@ -36,7 +36,7 @@ The goal of this application is to illustrate pragmatic API development practice
 - `POST /api/v1/login` (body: `{"username":"<API_USERNAME>","password":"<API_PASSWORD>"}`)
 - `GET /api/v1/health`
 - `GET /api/v1/me` (requires `Authorization: Bearer <token>`)
-- `POST /api/v1/images` (multipart field `file`, requires `Authorization: Bearer <token>`)
+- `POST /api/v1/images` (multipart field `file`, returns `202 Accepted` with `job_id`, requires `Authorization: Bearer <token>`)
 - `GET /api/v1/image/{id}?variant=original|thumbnail|resized` (requires `Authorization: Bearer <token>`)
 - `GET /docs/openapi.v1.yaml`
 
@@ -47,11 +47,21 @@ Error responses follow `application/problem+json`.
 
 ### 1. Follow the docker environment install [here](../../README.md)
 
-### 2. Install dependencies
-Install Composer dependencies in the `php` container:
+### 2. Bootstrap application (recommended)
+
+```bash
+make setup
+```
+
+This command ensures runtime permissions, installs dependencies, generates JWT keys, and sets up Messenger transports.
+
+Optional manual alternative (if you want step-by-step):
 
 ```bash
 make install
+make permissions
+make jwt-keypair
+make setup-transports
 ```
 
 ### 3. Generate JWT keypair
@@ -110,6 +120,38 @@ Use the Makefile in `apps/api` to run all common commands from your host:
 make help
 ```
 
+Permission diagnostics:
+
+```bash
+make doctor
+```
+
+## Async worker (Messenger)
+
+Image processing is consumed asynchronously by the `worker` Docker service.
+
+Workflow:
+
+```text
+API
+  ↓
+dispatch message
+  ↓
+DB / queue
+  ↓
+worker (xN)
+  ↓
+processing async
+```
+
+When stack is up, the worker executes:
+- `php bin/console messenger:setup-transports`
+- `php bin/console messenger:consume transport_async_images`
+
+Image processing trace logs:
+- `var/log/image_processing.log` (dev/test)
+- `stderr` in production
+
 ## Git hooks from host machine
 
 You can run Git from the host machine without installing Composer locally.
@@ -119,18 +161,6 @@ You can run Git from the host machine without installing Composer locally.
 - If neither `composer` nor `docker` is available, hooks fail.
 
 Requirement when using container mode: the `php` service must be running (`docker compose up -d`).
-
-## Tools
-
-Decode a JWT payload locally (without verification):
-
-```bash
-make jwt-decode TOKEN='<JWT_TOKEN>'
-```
-
-Notes:
-- This only decodes the payload for inspection.
-- It does not verify signature/expiration/claims.
 
 ## CI checks
 
