@@ -23,7 +23,7 @@ final readonly class ImageService
     ) {
     }
 
-    public function processStagedUpload(string $stagedPath, string $originalFilename, string $mimeType): void
+    public function processStagedUpload(string $stagedPath, string $originalFilename, string $mimeType): int
     {
         $this->ensureImagickIsAvailable();
         $mimeType = $this->validateImageMimeType($mimeType);
@@ -89,6 +89,8 @@ final readonly class ImageService
             'staged_path' => $stagedPath,
             'original_filename' => $originalFilename,
         ]);
+
+        return $imageId;
     }
 
     private function processStoredOriginal(

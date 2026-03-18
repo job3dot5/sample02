@@ -40,5 +40,26 @@ final class ImageRepositoryTest extends TestCase
         self::assertSame(1920, (int) $saved['width']);
         self::assertSame(1080, (int) $saved['height']);
         self::assertSame('landscape', $saved['orientation']);
+
+        $repository->markAnalysisQueued($id);
+        $repository->saveAnalysisPayload(
+            $id,
+            'completed',
+            [
+                'description' => 'Blue sky over hills.',
+                'tags' => ['landscape', 'sky'],
+                'category' => 'landscape',
+            ],
+            model: 'gpt-4.1-mini',
+            error: null,
+        );
+
+        $saved = $repository->find($id);
+        self::assertNotNull($saved);
+        self::assertSame('completed', $saved['analysis_status']);
+        self::assertSame('gpt-4.1-mini', $saved['analysis_model']);
+        self::assertNull($saved['analysis_error']);
+        self::assertNotEmpty($saved['analysis_updated_at']);
+        self::assertJson($saved['analysis_json']);
     }
 }

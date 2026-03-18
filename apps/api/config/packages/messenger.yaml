@@ -3,11 +3,24 @@ framework:
         failure_transport: transport_failed_images
 
         transports:
-            transport_async_images:
+            transport_async_image_upload:
                 dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
                 options:
                     use_notify: true
                     check_delayed_interval: 60000
+                    queue_name: image_upload
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000
+                    multiplier: 2
+                    max_delay: 10000
+                    jitter: 0.1
+            transport_async_image_analysis:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    use_notify: true
+                    check_delayed_interval: 60000
+                    queue_name: image_analysis
                 retry_strategy:
                     max_retries: 3
                     delay: 1000
@@ -17,11 +30,13 @@ framework:
             transport_failed_images: '%env(MESSENGER_FAILED_TRANSPORT_DSN)%'
 
         routing:
-            App\Message\ProcessImageUploadMessage: transport_async_images
+            App\Message\ProcessImageUploadMessage: transport_async_image_upload
+            App\Message\AnalyzeImageMessage: transport_async_image_analysis
 
 when@test:
     framework:
         messenger:
             transports:
-                transport_async_images: 'in-memory://'
+                transport_async_image_upload: 'in-memory://'
+                transport_async_image_analysis: 'in-memory://'
                 transport_failed_images: 'in-memory://'

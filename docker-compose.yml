@@ -18,10 +18,22 @@ services:
     depends_on:
       - php
 
-  # message queue worker
-  worker:
+  # image upload/resize worker
+  worker-upload:
     build: ./docker/php
-    command: ["/bin/bash", "-lc", "/var/www/api/bin/runtime-permissions.sh init && php /var/www/api/bin/console messenger:setup-transports --no-interaction && php /var/www/api/bin/console messenger:consume transport_async_images --time-limit=3600 --memory-limit=256M --no-interaction"]
+    command: ["/bin/bash", "-lc", "/var/www/api/bin/runtime-permissions.sh init && php /var/www/api/bin/console messenger:setup-transports --no-interaction && php /var/www/api/bin/console messenger:consume transport_async_image_upload --time-limit=3600 --memory-limit=256M --no-interaction"]
+    restart: unless-stopped
+    volumes:
+      - ./apps/api:/var/www/api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - php
+
+  # image analysis worker (runs after worker-upload)
+  worker-analysis:
+    build: ./docker/php
+    command: ["/bin/bash", "-lc", "/var/www/api/bin/runtime-permissions.sh init && php /var/www/api/bin/console messenger:setup-transports --no-interaction && php /var/www/api/bin/console messenger:consume transport_async_image_analysis --time-limit=3600 --memory-limit=256M --no-interaction"]
     restart: unless-stopped
     volumes:
       - ./apps/api:/var/www/api

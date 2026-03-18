@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace App\MessageHandler;
 
+use App\Message\AnalyzeImageMessage;
 use App\Message\ProcessImageUploadMessage;
 use App\Service\ImageService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsMessageHandler]
 final readonly class ProcessImageUploadMessageHandler
 {
     public function __construct(
         private ImageService $imageService,
+        private MessageBusInterface $messageBus,
         private LoggerInterface $imageProcessingLogger,
     ) {
     }
@@ -28,12 +31,23 @@ final readonly class ProcessImageUploadMessageHandler
         ]);
 
         try {
-            $this->imageService->processStagedUpload(
+            $imageId = $this->imageService->processStagedUpload(
                 $message->stagedPath(),
                 $message->originalFilename(),
                 $message->mimeType(),
             );
+
+            try {
+                $this->messageBus->dispatch(new AnalyzeImageMessage($imageId));
+            } catch (\Throwable $dispatchException) {
+                $this->imageProcessingLogger->warning('image.analysis.dispatch_failed', [
+                    'image_id' => $imageId,
+                    'error' => $dispatchException->getMessage(),
+                ]);
+            }
+
             $this->imageProcessingLogger->info('image.worker.succeeded', [
+                'image_id' => $imageId,
                 'staged_path' => $message->stagedPath(),
                 'original_filename' => $message->originalFilename(),
             ]);

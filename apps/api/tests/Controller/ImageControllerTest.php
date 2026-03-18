@@ -212,6 +212,79 @@ final class ImageControllerTest extends TestCase
         self::assertStringContainsString('inline', (string) $response->headers->get('content-disposition'));
     }
 
+    public function testListReturnsPaginatedImages(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createImageRepository();
+
+        $repository->create([
+            'original_filename' => 'first.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => 12,
+            'width' => 100,
+            'height' => 100,
+            'orientation' => 'square',
+            'metadata_json' => '{}',
+            'original_path' => 'var/storage/images/original/2026-03/first.jpg',
+            'thumbnail_path' => 'var/storage/images/thumbnail/2026-03/first.thumb.jpg',
+            'resized_path' => 'var/storage/images/resized/2026-03/first.resized.jpg',
+        ]);
+        $secondId = $repository->create([
+            'original_filename' => 'second.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => 13,
+            'width' => 200,
+            'height' => 100,
+            'orientation' => 'landscape',
+            'metadata_json' => '{}',
+            'original_path' => 'var/storage/images/original/2026-03/second.jpg',
+            'thumbnail_path' => 'var/storage/images/thumbnail/2026-03/second.thumb.jpg',
+            'resized_path' => 'var/storage/images/resized/2026-03/second.resized.jpg',
+        ]);
+
+        $response = $controller->list(Request::create('/images', 'GET', ['page' => '1', 'per_page' => '1']), $repository);
+        $payload = json_decode((string) $response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
+        self::assertSame('application/json', $response->headers->get('content-type'));
+        self::assertSame(1, $payload['meta']['page']);
+        self::assertSame(1, $payload['meta']['per_page']);
+        self::assertSame(2, $payload['meta']['total']);
+        self::assertSame(2, $payload['meta']['total_pages']);
+        self::assertCount(1, $payload['data']);
+        self::assertSame($secondId, $payload['data'][0]['id']);
+        self::assertSame('second.jpg', $payload['data'][0]['original_filename']);
+        self::assertArrayNotHasKey('original_path', $payload['data'][0]);
+        self::assertArrayNotHasKey('thumbnail_path', $payload['data'][0]);
+        self::assertArrayNotHasKey('resized_path', $payload['data'][0]);
+        self::assertSame(sprintf('/api/v1/image/%d?variant=resized', $secondId), $payload['data'][0]['image_urls']['resized']);
+    }
+
+    public function testListReturnsBadRequestWhenPageIsInvalid(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createImageRepository();
+
+        $response = $controller->list(Request::create('/images', 'GET', ['page' => '0']), $repository);
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        self::assertSame('application/problem+json', $response->headers->get('content-type'));
+    }
+
+    public function testListReturnsBadRequestWhenPerPageIsInvalid(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createImageRepository();
+
+        $response = $controller->list(Request::create('/images', 'GET', ['per_page' => '0']), $repository);
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        self::assertSame('application/problem+json', $response->headers->get('content-type'));
+
+        $response = $controller->list(Request::create('/images', 'GET', ['per_page' => '101']), $repository);
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        self::assertSame('application/problem+json', $response->headers->get('content-type'));
+    }
+
     private function requestWithFile(UploadedFile $file): Request
     {
         return Request::create('/images', 'POST', [], [], ['file' => $file]);

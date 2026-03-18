@@ -66,6 +66,46 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
   /api/v1/images:
+    get:
+      summary: List images (paginated)
+      operationId: listImages
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: per_page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated list of images
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageListResponse'
+        '400':
+          description: Invalid pagination parameters
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Missing/invalid token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
     post:
       summary: Upload image and queue processing
       operationId: uploadImage
@@ -254,21 +294,63 @@ components:
         orientation:
           type: string
           enum: [landscape, portrait, square]
-        original_path:
-          type: string
-          example: var/storage/images/original/abc123.jpg
-        thumbnail_path:
-          type: string
-          example: var/storage/images/thumbnail/abc123.thumb.jpg
-        resized_path:
-          type: string
-          example: var/storage/images/resized/abc123.resized.jpg
+        image_urls:
+          type: object
+          required: [original, thumbnail, resized]
+          properties:
+            original:
+              type: string
+              example: /api/v1/image/1?variant=original
+            thumbnail:
+              type: string
+              example: /api/v1/image/1?variant=thumbnail
+            resized:
+              type: string
+              example: /api/v1/image/1?variant=resized
+        analysis:
+          type: object
+          required: [status, result]
+          properties:
+            status:
+              type: string
+              nullable: true
+              example: completed
+            result:
+              type: object
+              nullable: true
+              additionalProperties: true
         created_at:
           type: string
           format: date-time
-        metadata:
-          type: object
-          additionalProperties: true
+        updated_at:
+          type: string
+          format: date-time
+    ImageListMeta:
+      type: object
+      required: [page, per_page, total, total_pages]
+      properties:
+        page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 42
+        total_pages:
+          type: integer
+          example: 3
+    ImageListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Image'
+        meta:
+          $ref: '#/components/schemas/ImageListMeta'
     Problem:
       type: object
       required: [type, title, status]

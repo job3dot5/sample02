@@ -1,7 +1,7 @@
 # Symfony REST API Technical Showcase
 
 [![PHP](https://img.shields.io/badge/PHP-8.3-blue)](https://www.php.net/)
-[![Symfony](https://img.shields.io/badge/Symfony-LTS-black)](https://symfony.com/)
+[![Symfony](https://img.shields.io/badge/Symfony-7.4-black)](https://symfony.com/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![CI](https://github.com/job3dot5/sample02/actions/workflows/ci.yml/badge.svg)](https://github.com/job3dot5/sample02/actions)
 
@@ -15,7 +15,8 @@ The goal of this application is to illustrate pragmatic API development practice
 - Contract-first OpenAPI (`openapi/openapi.v1.yaml`)
 - Minimal health endpoint (`/api/v1/health`)
 - JWT authentication with `lexik/jwt-authentication-bundle`
-- Authenticated async image processing pipeline (`symfony/messenger` + Doctrine transport + worker)
+- Authenticated async image pipeline (`symfony/messenger` + Doctrine transport + workers)
+- Optional AI image enrichment (OpenAI Vision via `symfony/http-client`)
 
 
 ## Screenshots
@@ -29,6 +30,7 @@ The goal of this application is to illustrate pragmatic API development practice
 - JWT auth (`lexik/jwt-authentication-bundle`, bearer tokens)
 - Doctrine DBAL
 - SQLite (database file: `var/data.db`)
+- Symfony HttpClient
 - Docker / Docker Compose
 
 ## Demo endpoints
@@ -37,6 +39,7 @@ The goal of this application is to illustrate pragmatic API development practice
 - `GET /api/v1/health`
 - `GET /api/v1/me` (requires `Authorization: Bearer <token>`)
 - `POST /api/v1/images` (multipart field `file`, returns `202 Accepted` with `job_id`, requires `Authorization: Bearer <token>`)
+- `GET /api/v1/images?page=1&per_page=20` (paginated image list, requires `Authorization: Bearer <token>`)
 - `GET /api/v1/image/{id}?variant=original|thumbnail|resized` (requires `Authorization: Bearer <token>`)
 - `GET /docs/openapi.v1.yaml`
 
@@ -84,6 +87,8 @@ The demo in-memory user is:
 - JWT private key passphrase: `JWT_PASSPHRASE` (default committed value: `change_me`)
 - JWT issuer claim: `JWT_ISSUER` (default: `urn:sample02:api`)
 - JWT audience claim: `JWT_AUDIENCE` (default: `urn:sample02:client`)
+- OpenAI API key (optional): `OPENAI_API_KEY` (if empty, AI analysis is skipped)
+- OpenAI model: `OPENAI_MODEL` (default: `gpt-4.1-nano`)
 
 For local/dev usage, set local values in `.env.local` (not versioned), for example:
 
@@ -93,6 +98,8 @@ API_PASSWORD=demo
 JWT_PASSPHRASE=your_local_passphrase
 JWT_ISSUER=urn:sample02:api
 JWT_AUDIENCE=urn:sample02:client
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4.1-nano
 ```
 
 ### 5. Git hooks
@@ -128,29 +135,47 @@ make doctor
 
 ## Async worker (Messenger)
 
-Image processing is consumed asynchronously by the `worker` Docker service.
+Image processing is consumed asynchronously by two Docker workers:
+- `worker-upload`: upload processing (original/thumbnail/resized + metadata row)
+- `worker-analysis`: optional AI analysis on `resized` image (description/tags/category enrichment)
 
 Workflow:
 
 ```text
 API
   ↓
-dispatch message
+dispatch ProcessImageUploadMessage
   ↓
 DB / queue
   ↓
-worker (xN)
+worker-upload (xN)
   ↓
 processing async
+  ↓
+dispatch AnalyzeImageMessage
+  ↓
+worker-analysis (xN)
+  ↓
+OpenAI Vision call (Responses API, JSON schema contract)
+  ↓
+persist analysis payload in `image.analysis_*`
 ```
 
-When stack is up, the worker executes:
+When stack is up, workers execute:
 - `php bin/console messenger:setup-transports`
-- `php bin/console messenger:consume transport_async_images`
+- `php bin/console messenger:consume transport_async_image_upload`
+- `php bin/console messenger:consume transport_async_image_analysis`
+
+Transport/queue mapping:
+- `transport_async_image_upload` → queue `image_upload`
+- `transport_async_image_analysis` → queue `image_analysis`
 
 Image processing trace logs:
 - `var/log/image_processing.log` (dev/test)
 - `stderr` in production
+
+
+Note : Messenger workers must be restarted after code changes in development.
 
 ## Git hooks from host machine
 

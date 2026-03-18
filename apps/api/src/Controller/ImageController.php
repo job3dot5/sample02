@@ -16,6 +16,10 @@ use Symfony\Component\Routing\Attribute\Route;
 
 final class ImageController extends AbstractApiController
 {
+    private const DEFAULT_PAGE = 1;
+    private const DEFAULT_PER_PAGE = 20;
+    private const MAX_PER_PAGE = 100;
+
     public function __construct(
         private readonly int $maxUploadSizeBytes,
         private readonly string $projectDir,
@@ -156,5 +160,89 @@ final class ImageController extends AbstractApiController
                 'status' => 'queued',
             ],
         ], Response::HTTP_ACCEPTED);
+    }
+
+    #[Route('/images', name: 'image_list', methods: ['GET'])]
+    public function list(Request $request, ImageRepository $imageRepository): JsonResponse
+    {
+        $pageInput = $request->query->get('page');
+        $perPageInput = $request->query->get('per_page');
+
+        $page = null === $pageInput ? self::DEFAULT_PAGE : filter_var($pageInput, \FILTER_VALIDATE_INT);
+        $perPage = null === $perPageInput ? self::DEFAULT_PER_PAGE : filter_var($perPageInput, \FILTER_VALIDATE_INT);
+
+        if (!is_int($page) || $page < 1) {
+            return $this->problem(
+                Response::HTTP_BAD_REQUEST,
+                'Bad Request',
+                $this->errorType('image-list-page-invalid'),
+                'Query parameter "page" must be an integer greater than or equal to 1.',
+            );
+        }
+
+        if (!is_int($perPage) || $perPage < 1 || $perPage > self::MAX_PER_PAGE) {
+            return $this->problem(
+                Response::HTTP_BAD_REQUEST,
+                'Bad Request',
+                $this->errorType('image-list-per-page-invalid'),
+                sprintf('Query parameter "per_page" must be an integer between 1 and %d.', self::MAX_PER_PAGE),
+            );
+        }
+
+        $result = $imageRepository->listPaginated($page, $perPage);
+        $total = (int) $result['total'];
+        $totalPages = (int) max(1, (int) ceil($total / $perPage));
+
+        return new JsonResponse([
+            'data' => array_map(
+                fn (array $row): array => $this->normalizeImageListRow($row),
+                $result['items'],
+            ),
+            'meta' => [
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'total_pages' => $totalPages,
+            ],
+        ]);
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     *
+     * @return array<string,mixed>
+     */
+    private function normalizeImageListRow(array $row): array
+    {
+        $id = (int) ($row['id'] ?? 0);
+        $analysisJson = null;
+        if (is_string($row['analysis_json'] ?? null) && '' !== $row['analysis_json']) {
+            try {
+                $analysisJson = json_decode($row['analysis_json'], true, 512, \JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                $analysisJson = null;
+            }
+        }
+
+        return [
+            'id' => $id,
+            'created_at' => (string) ($row['created_at'] ?? ''),
+            'updated_at' => (string) ($row['updated_at'] ?? ''),
+            'original_filename' => (string) ($row['original_filename'] ?? ''),
+            'mime_type' => (string) ($row['mime_type'] ?? ''),
+            'size_bytes' => (int) ($row['size_bytes'] ?? 0),
+            'width' => (int) ($row['width'] ?? 0),
+            'height' => (int) ($row['height'] ?? 0),
+            'orientation' => (string) ($row['orientation'] ?? ''),
+            'image_urls' => [
+                'original' => sprintf('/api/v1/image/%d?variant=original', $id),
+                'thumbnail' => sprintf('/api/v1/image/%d?variant=thumbnail', $id),
+                'resized' => sprintf('/api/v1/image/%d?variant=resized', $id),
+            ],
+            'analysis' => [
+                'status' => $row['analysis_status'] ?? null,
+                'result' => $analysisJson,
+            ],
+        ];
     }
 }

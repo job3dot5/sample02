@@ -1,7 +1,7 @@
 # Symfony REST API Technical Showcase
 
 [![PHP](https://img.shields.io/badge/PHP-8.3-blue)](https://www.php.net/)
-[![Symfony](https://img.shields.io/badge/Symfony-LTS-black)](https://symfony.com/)
+[![Symfony](https://img.shields.io/badge/Symfony-7.4-black)](https://symfony.com/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![CI](https://github.com/job3dot5/sample02/actions/workflows/ci.yml/badge.svg)](https://github.com/job3dot5/sample02/actions)
 
@@ -18,7 +18,8 @@ The project includes a Docker development environment and a minimal Symfony appl
 - REST API (JSON)
 - OpenAPI 3.1 contract
 - JWT authentication (`lexik/jwt-authentication-bundle`)
-- Async message queue for image processing (`symfony/messenger` + Doctrine transport + Docker worker)
+- Async image pipeline (`symfony/messenger` + Doctrine transport + Docker workers)
+- OpenAI Vision enrichment (Responses API via `symfony/http-client`, model configurable)
 - Nginx
 - Docker Compose
 
@@ -78,7 +79,12 @@ docker compose up -d --build
 
 Open: `https://sample02.dev`
 
-The `worker` service consumes `transport_async_images` messages to process image uploads asynchronously.
+The `worker-upload` service consumes `transport_async_image_upload` messages to process image uploads asynchronously.
+The `worker-analysis` service consumes `transport_async_image_analysis` messages for optional AI tagging/enrichment.
+
+Queue names:
+- upload: `image_upload`
+- analysis: `image_analysis`
 
 For first-time app bootstrap inside `apps/api`, run:
 

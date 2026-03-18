@@ -20,6 +20,10 @@ parameters:
     app.images.resized.max_width: 1280
     app.images.resized.max_height: 1280
     app.images.upload.max_size_bytes: 5242880 # 5Mo
+    app.openai.api_key.default: ''
+    app.openai.api_key: '%env(default:app.openai.api_key.default:OPENAI_API_KEY)%'
+    app.openai.model: '%env(OPENAI_MODEL)%'
+    app.openai.endpoint: 'https://api.openai.com/v1/responses'
 
 services:
     # default configuration for services in *this* file
@@ -68,6 +72,13 @@ services:
         arguments:
             $storageRoot: '%app.images.storage_root%'
             $pendingDirectory: '%app.images.directory.pending%'
+
+    App\Service\ImageAnalysis\ImageAnalysisService:
+        arguments:
+            $openAiApiKey: '%app.openai.api_key%'
+            $openAiModel: '%app.openai.model%'
+            $openAiEndpoint: '%app.openai.endpoint%'
+            $projectDir: '%kernel.project_dir%'
 
     App\EventSubscriber\ApiExceptionSubscriber:
         arguments:
