@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Service;
 
 use App\Message\ProcessImageUploadMessage;
+use App\Repository\JobTrackingRepository;
 use App\Service\ImageUploadQueueService;
+use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -31,7 +33,8 @@ final class ImageUploadQueueServiceTest extends TestCase
     public function testQueueUploadStagesFileAndDispatchesMessage(): void
     {
         $bus = new InMemoryMessageBus();
-        $service = new ImageUploadQueueService($this->tmpDir.'/storage/images', 'pending', $bus, new NullLogger());
+        $jobTrackingRepository = $this->createJobTrackingRepository();
+        $service = new ImageUploadQueueService($this->tmpDir.'/storage/images', 'pending', $bus, $jobTrackingRepository, new NullLogger());
 
         $uploadedFile = new UploadedFile(
             $this->createTinyPngFixture(),
@@ -49,16 +52,20 @@ final class ImageUploadQueueServiceTest extends TestCase
 
         /** @var ProcessImageUploadMessage $message */
         $message = $bus->messages[0];
+        self::assertSame($jobId, $message->jobId());
         self::assertSame('tiny.png', $message->originalFilename());
         self::assertSame('image/png', $message->mimeType());
         self::assertFileExists($message->stagedPath());
         self::assertStringContainsString('/storage/images/pending/', $message->stagedPath());
+        $job = $jobTrackingRepository->findByJobId($jobId);
+        self::assertNotNull($job);
+        self::assertSame('queued', $job['status']);
     }
 
     public function testQueueUploadRejectsNonImage(): void
     {
         $bus = new InMemoryMessageBus();
-        $service = new ImageUploadQueueService($this->tmpDir.'/storage/images', 'pending', $bus, new NullLogger());
+        $service = new ImageUploadQueueService($this->tmpDir.'/storage/images', 'pending', $bus, $this->createJobTrackingRepository(), new NullLogger());
 
         $txtPath = $this->tmpDir.'/not-image.txt';
         file_put_contents($txtPath, 'not an image');
@@ -76,6 +83,7 @@ final class ImageUploadQueueServiceTest extends TestCase
             $this->tmpDir.'/storage/images',
             'pending',
             new ThrowingMessageBus(),
+            $this->createJobTrackingRepository(),
             new NullLogger(),
         );
 
@@ -108,6 +116,16 @@ final class ImageUploadQueueServiceTest extends TestCase
         file_put_contents($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', true));
 
         return $path;
+    }
+
+    private function createJobTrackingRepository(): JobTrackingRepository
+    {
+        $connection = DriverManager::getConnection([
+            'driver' => 'pdo_sqlite',
+            'memory' => true,
+        ]);
+
+        return new JobTrackingRepository($connection);
     }
 
     private function removeDirectory(string $dir): void

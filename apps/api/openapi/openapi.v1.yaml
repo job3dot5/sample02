@@ -67,11 +67,25 @@ paths:
                 $ref: '#/components/schemas/Problem'
   /api/v1/images:
     get:
-      summary: List images (paginated)
+      summary: List images (paginated or filtered by id/ids)
       operationId: listImages
       security:
         - bearerAuth: []
       parameters:
+        - in: query
+          name: id
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Return only one image by id. Mutually exclusive with ids.
+        - in: query
+          name: ids
+          required: false
+          schema:
+            type: string
+            example: 1,2,5
+          description: Return only images in this comma-separated id list. Mutually exclusive with id.
         - in: query
           name: page
           required: false
@@ -79,6 +93,7 @@ paths:
             type: integer
             minimum: 1
             default: 1
+          description: Used only when id/ids filters are not provided.
         - in: query
           name: per_page
           required: false
@@ -87,6 +102,7 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+          description: Used only when id/ids filters are not provided.
       responses:
         '200':
           description: Paginated list of images
@@ -149,6 +165,38 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '500':
           description: Image queueing failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/image-jobs/{job_id}:
+    get:
+      summary: Poll image job status
+      operationId: getImageJobStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{32}$'
+      responses:
+        '200':
+          description: Current image job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageJobStatus'
+        '401':
+          description: Missing/invalid token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Image job not found
           content:
             application/problem+json:
               schema:
@@ -309,7 +357,7 @@ components:
               example: /api/v1/image/1?variant=resized
         analysis:
           type: object
-          required: [status, result]
+          required: [status, result, cost]
           properties:
             status:
               type: string
@@ -319,12 +367,49 @@ components:
               type: object
               nullable: true
               additionalProperties: true
+            cost:
+              type: object
+              nullable: true
+              required: [model, input_tokens, output_tokens, total_tokens, estimated_cost]
+              properties:
+                model:
+                  type: string
+                  example: gpt-4.1-nano
+                input_tokens:
+                  type: integer
+                  example: 1200
+                output_tokens:
+                  type: integer
+                  example: 400
+                total_tokens:
+                  type: integer
+                  example: 1600
+                estimated_cost:
+                  type: number
+                  format: float
+                  example: 0.0008
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+    ImageJobStatus:
+      type: object
+      required: [status, image_id, error]
+      properties:
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+          example: processing
+        image_id:
+          type: integer
+          nullable: true
+          example: 12
+        error:
+          type: string
+          nullable: true
+          example: Unable to persist image metadata row.
     ImageListMeta:
       type: object
       required: [page, per_page, total, total_pages]

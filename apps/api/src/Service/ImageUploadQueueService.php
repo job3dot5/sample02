@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Message\ProcessImageUploadMessage;
+use App\Repository\JobTrackingRepository;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -15,6 +16,7 @@ final readonly class ImageUploadQueueService
         private string $storageRoot,
         private string $pendingDirectory,
         private MessageBusInterface $messageBus,
+        private JobTrackingRepository $jobTrackingRepository,
         private LoggerInterface $imageProcessingLogger,
     ) {
     }
@@ -31,6 +33,7 @@ final readonly class ImageUploadQueueService
         $jobId = bin2hex(random_bytes(16));
         $stagedName = sprintf('%s.%s', $jobId, $extension);
         $stagedFile = $file->move($pendingRoot, $stagedName);
+        $this->jobTrackingRepository->createQueued($jobId);
         $this->imageProcessingLogger->info('image.queue.staged', [
             'job_id' => $jobId,
             'original_filename' => $file->getClientOriginalName(),
@@ -40,6 +43,7 @@ final readonly class ImageUploadQueueService
 
         try {
             $this->messageBus->dispatch(new ProcessImageUploadMessage(
+                $jobId,
                 $stagedFile->getPathname(),
                 $file->getClientOriginalName(),
                 $mimeType,
@@ -50,6 +54,7 @@ final readonly class ImageUploadQueueService
             ]);
         } catch (\Throwable $exception) {
             @unlink($stagedFile->getPathname());
+            $this->jobTrackingRepository->markFailed($jobId, $exception->getMessage());
             $this->imageProcessingLogger->error('image.queue.dispatch_failed', [
                 'job_id' => $jobId,
                 'staged_path' => $stagedFile->getPathname(),

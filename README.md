@@ -5,11 +5,13 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![CI](https://github.com/job3dot5/sample02/actions/workflows/ci.yml/badge.svg)](https://github.com/job3dot5/sample02/actions)
 
-This repository contains a small Symfony REST API project used as a technical showcase.
+This repository contains a Symfony REST API project designed as a technical showcase of modern backend practices.
 
-The goal is not to build a full product but to demonstrate pragmatic backend architecture, API contracts, authentication, and development tooling.
+Rather than building a full product, the focus is on designing a coherent and production-like API: contract-first OpenAPI specification, JWT-based authentication, and an asynchronous image processing pipeline.
 
-The project includes a Docker development environment and a minimal Symfony application exposing REST endpoints, OpenAPI documentation, and JWT-protected routes.
+The application exposes REST endpoints backed by a Dockerized environment, with background workers (Symfony Messenger) handling image processing and optional AI-powered enrichment (OpenAI Vision).
+
+It demonstrates how to build a complete API workflow, from authentication and file upload to asynchronous processing and result retrieval.
 
 ## Stack
 
@@ -20,6 +22,7 @@ The project includes a Docker development environment and a minimal Symfony appl
 - JWT authentication (`lexik/jwt-authentication-bundle`)
 - Async image pipeline (`symfony/messenger` + Doctrine transport + Docker workers)
 - OpenAI Vision enrichment (Responses API via `symfony/http-client`, model configurable)
+- Static GPT cost estimation per model (persisted for image analyses)
 - Nginx
 - Docker Compose
 
@@ -85,6 +88,9 @@ The `worker-analysis` service consumes `transport_async_image_analysis` messages
 Queue names:
 - upload: `image_upload`
 - analysis: `image_analysis`
+
+Async upload status can be polled through `GET /api/v1/image-jobs/{job_id}` (JWT required), returning `status`, `image_id`, and `error`.
+Image listing (`GET /api/v1/images`) includes AI payload and estimated GPT cost when analysis is available.
 
 For first-time app bootstrap inside `apps/api`, run:
 

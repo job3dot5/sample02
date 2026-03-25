@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Controller\ImageController;
+use App\Repository\ImageAnalysisCostRepository;
 use App\Repository\ImageRepository;
+use App\Repository\JobTrackingRepository;
 use App\Service\ImageUploadQueueService;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\TestCase;
@@ -216,6 +218,7 @@ final class ImageControllerTest extends TestCase
     {
         $controller = $this->createController();
         $repository = $this->createImageRepository();
+        $costRepository = $this->createImageAnalysisCostRepository();
 
         $repository->create([
             'original_filename' => 'first.jpg',
@@ -241,8 +244,20 @@ final class ImageControllerTest extends TestCase
             'thumbnail_path' => 'var/storage/images/thumbnail/2026-03/second.thumb.jpg',
             'resized_path' => 'var/storage/images/resized/2026-03/second.resized.jpg',
         ]);
+        $costRepository->create(
+            imageId: $secondId,
+            model: 'gpt-4.1-nano',
+            inputTokens: 1200,
+            outputTokens: 400,
+            totalTokens: 1600,
+            estimatedCost: 0.0012,
+        );
 
-        $response = $controller->list(Request::create('/images', 'GET', ['page' => '1', 'per_page' => '1']), $repository);
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['page' => '1', 'per_page' => '1']),
+            $repository,
+            $costRepository,
+        );
         $payload = json_decode((string) $response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
         self::assertSame(Response::HTTP_OK, $response->getStatusCode());
@@ -258,6 +273,54 @@ final class ImageControllerTest extends TestCase
         self::assertArrayNotHasKey('thumbnail_path', $payload['data'][0]);
         self::assertArrayNotHasKey('resized_path', $payload['data'][0]);
         self::assertSame(sprintf('/api/v1/image/%d?variant=resized', $secondId), $payload['data'][0]['image_urls']['resized']);
+        self::assertSame('gpt-4.1-nano', $payload['data'][0]['analysis']['cost']['model']);
+        self::assertSame(1200, $payload['data'][0]['analysis']['cost']['input_tokens']);
+        self::assertSame(400, $payload['data'][0]['analysis']['cost']['output_tokens']);
+        self::assertSame(1600, $payload['data'][0]['analysis']['cost']['total_tokens']);
+        self::assertSame(0.0012, $payload['data'][0]['analysis']['cost']['estimated_cost']);
+    }
+
+    public function testListDoesNotExposeAnalysisPrompt(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createImageRepository();
+        $id = $repository->create([
+            'original_filename' => 'third.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => 13,
+            'width' => 200,
+            'height' => 100,
+            'orientation' => 'landscape',
+            'metadata_json' => '{}',
+            'original_path' => 'var/storage/images/original/2026-03/third.jpg',
+            'thumbnail_path' => 'var/storage/images/thumbnail/2026-03/third.thumb.jpg',
+            'resized_path' => 'var/storage/images/resized/2026-03/third.resized.jpg',
+        ]);
+        $repository->saveAnalysisPayload(
+            $id,
+            'completed',
+            [
+                'description' => 'A test image.',
+                'tags' => ['test'],
+                'category' => 'object',
+                'prompt' => 'should_not_be_public',
+                'image_variant' => 'resized',
+            ],
+            'gpt-4.1-nano',
+            null,
+        );
+
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['page' => '1', 'per_page' => '20']),
+            $repository,
+            $this->createImageAnalysisCostRepository(),
+        );
+        $payload = json_decode((string) $response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
+        self::assertCount(1, $payload['data']);
+        self::assertArrayNotHasKey('prompt', $payload['data'][0]['analysis']['result']);
+        self::assertArrayNotHasKey('image_variant', $payload['data'][0]['analysis']['result']);
     }
 
     public function testListReturnsBadRequestWhenPageIsInvalid(): void
@@ -265,7 +328,11 @@ final class ImageControllerTest extends TestCase
         $controller = $this->createController();
         $repository = $this->createImageRepository();
 
-        $response = $controller->list(Request::create('/images', 'GET', ['page' => '0']), $repository);
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['page' => '0']),
+            $repository,
+            $this->createImageAnalysisCostRepository(),
+        );
 
         self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         self::assertSame('application/problem+json', $response->headers->get('content-type'));
@@ -276,13 +343,191 @@ final class ImageControllerTest extends TestCase
         $controller = $this->createController();
         $repository = $this->createImageRepository();
 
-        $response = $controller->list(Request::create('/images', 'GET', ['per_page' => '0']), $repository);
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['per_page' => '0']),
+            $repository,
+            $this->createImageAnalysisCostRepository(),
+        );
         self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         self::assertSame('application/problem+json', $response->headers->get('content-type'));
 
-        $response = $controller->list(Request::create('/images', 'GET', ['per_page' => '101']), $repository);
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['per_page' => '101']),
+            $repository,
+            $this->createImageAnalysisCostRepository(),
+        );
         self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         self::assertSame('application/problem+json', $response->headers->get('content-type'));
+    }
+
+    public function testListCanFilterBySingleId(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createImageRepository();
+        $costRepository = $this->createImageAnalysisCostRepository();
+
+        $firstId = $repository->create([
+            'original_filename' => 'first-filter.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => 12,
+            'width' => 100,
+            'height' => 100,
+            'orientation' => 'square',
+            'metadata_json' => '{}',
+            'original_path' => 'var/storage/images/original/2026-03/first-filter.jpg',
+            'thumbnail_path' => 'var/storage/images/thumbnail/2026-03/first-filter.thumb.jpg',
+            'resized_path' => 'var/storage/images/resized/2026-03/first-filter.resized.jpg',
+        ]);
+        $secondId = $repository->create([
+            'original_filename' => 'second-filter.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => 13,
+            'width' => 200,
+            'height' => 100,
+            'orientation' => 'landscape',
+            'metadata_json' => '{}',
+            'original_path' => 'var/storage/images/original/2026-03/second-filter.jpg',
+            'thumbnail_path' => 'var/storage/images/thumbnail/2026-03/second-filter.thumb.jpg',
+            'resized_path' => 'var/storage/images/resized/2026-03/second-filter.resized.jpg',
+        ]);
+
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['id' => (string) $firstId]),
+            $repository,
+            $costRepository,
+        );
+        $payload = json_decode((string) $response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
+        self::assertSame(1, $payload['meta']['total']);
+        self::assertCount(1, $payload['data']);
+        self::assertSame($firstId, $payload['data'][0]['id']);
+        self::assertNotSame($secondId, $payload['data'][0]['id']);
+    }
+
+    public function testListCanFilterByIdsCsv(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createImageRepository();
+        $costRepository = $this->createImageAnalysisCostRepository();
+
+        $firstId = $repository->create([
+            'original_filename' => 'first-ids.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => 12,
+            'width' => 100,
+            'height' => 100,
+            'orientation' => 'square',
+            'metadata_json' => '{}',
+            'original_path' => 'var/storage/images/original/2026-03/first-ids.jpg',
+            'thumbnail_path' => 'var/storage/images/thumbnail/2026-03/first-ids.thumb.jpg',
+            'resized_path' => 'var/storage/images/resized/2026-03/first-ids.resized.jpg',
+        ]);
+        $secondId = $repository->create([
+            'original_filename' => 'second-ids.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => 13,
+            'width' => 200,
+            'height' => 100,
+            'orientation' => 'landscape',
+            'metadata_json' => '{}',
+            'original_path' => 'var/storage/images/original/2026-03/second-ids.jpg',
+            'thumbnail_path' => 'var/storage/images/thumbnail/2026-03/second-ids.thumb.jpg',
+            'resized_path' => 'var/storage/images/resized/2026-03/second-ids.resized.jpg',
+        ]);
+        $thirdId = $repository->create([
+            'original_filename' => 'third-ids.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => 13,
+            'width' => 200,
+            'height' => 100,
+            'orientation' => 'landscape',
+            'metadata_json' => '{}',
+            'original_path' => 'var/storage/images/original/2026-03/third-ids.jpg',
+            'thumbnail_path' => 'var/storage/images/thumbnail/2026-03/third-ids.thumb.jpg',
+            'resized_path' => 'var/storage/images/resized/2026-03/third-ids.resized.jpg',
+        ]);
+
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['ids' => sprintf('%d,%d', $firstId, $thirdId)]),
+            $repository,
+            $costRepository,
+        );
+        $payload = json_decode((string) $response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        $returnedIds = array_map(static fn (array $item): int => (int) $item['id'], $payload['data']);
+
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
+        self::assertSame(2, $payload['meta']['total']);
+        self::assertCount(2, $payload['data']);
+        self::assertContains($firstId, $returnedIds);
+        self::assertContains($thirdId, $returnedIds);
+        self::assertNotContains($secondId, $returnedIds);
+    }
+
+    public function testListReturnsBadRequestWhenIdAndIdsAreBothProvided(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createImageRepository();
+
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['id' => '1', 'ids' => '1,2']),
+            $repository,
+            $this->createImageAnalysisCostRepository(),
+        );
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        self::assertSame('application/problem+json', $response->headers->get('content-type'));
+    }
+
+    public function testListReturnsBadRequestWhenIdOrIdsAreInvalid(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createImageRepository();
+
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['id' => 'abc']),
+            $repository,
+            $this->createImageAnalysisCostRepository(),
+        );
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        self::assertSame('application/problem+json', $response->headers->get('content-type'));
+
+        $response = $controller->list(
+            Request::create('/images', 'GET', ['ids' => '1,foo']),
+            $repository,
+            $this->createImageAnalysisCostRepository(),
+        );
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        self::assertSame('application/problem+json', $response->headers->get('content-type'));
+    }
+
+    public function testJobStatusReturnsNotFoundWhenJobDoesNotExist(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createJobTrackingRepository();
+
+        $response = $controller->jobStatus(str_repeat('f', 32), $repository);
+
+        self::assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+        self::assertSame('application/problem+json', $response->headers->get('content-type'));
+    }
+
+    public function testJobStatusReturnsStatusPayload(): void
+    {
+        $controller = $this->createController();
+        $repository = $this->createJobTrackingRepository();
+        $jobId = str_repeat('a', 32);
+        $repository->createQueued($jobId);
+        $repository->markCompleted($jobId, 12);
+
+        $response = $controller->jobStatus($jobId, $repository);
+        $payload = json_decode((string) $response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
+        self::assertSame('application/json', $response->headers->get('content-type'));
+        self::assertSame('completed', $payload['status']);
+        self::assertSame(12, $payload['image_id']);
+        self::assertNull($payload['error']);
     }
 
     private function requestWithFile(UploadedFile $file): Request
@@ -300,6 +545,7 @@ final class ImageControllerTest extends TestCase
             $storageRoot,
             'pending',
             $messageBus,
+            $this->createJobTrackingRepository(),
             new NullLogger(),
         );
     }
@@ -317,6 +563,26 @@ final class ImageControllerTest extends TestCase
     private function createController(): ImageController
     {
         return new ImageController(self::MAX_UPLOAD_SIZE_BYTES, $this->projectDir(), 'urn:sample02:error');
+    }
+
+    private function createJobTrackingRepository(): JobTrackingRepository
+    {
+        $connection = DriverManager::getConnection([
+            'driver' => 'pdo_sqlite',
+            'memory' => true,
+        ]);
+
+        return new JobTrackingRepository($connection);
+    }
+
+    private function createImageAnalysisCostRepository(): ImageAnalysisCostRepository
+    {
+        $connection = DriverManager::getConnection([
+            'driver' => 'pdo_sqlite',
+            'memory' => true,
+        ]);
+
+        return new ImageAnalysisCostRepository($connection);
     }
 
     private function projectDir(): string

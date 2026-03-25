@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Repository\ImageAnalysisCostRepository;
 use App\Repository\ImageRepository;
+use App\Repository\JobTrackingRepository;
 use App\Service\ImageUploadQueueService;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -162,9 +164,102 @@ final class ImageController extends AbstractApiController
         ], Response::HTTP_ACCEPTED);
     }
 
-    #[Route('/images', name: 'image_list', methods: ['GET'])]
-    public function list(Request $request, ImageRepository $imageRepository): JsonResponse
+    #[Route('/image-jobs/{jobId}', name: 'image_job_status', methods: ['GET'], requirements: ['jobId' => '[a-f0-9]{32}'])]
+    public function jobStatus(string $jobId, JobTrackingRepository $jobTrackingRepository): JsonResponse
     {
+        $job = $jobTrackingRepository->findByJobId($jobId);
+        if (null === $job) {
+            return $this->problem(
+                Response::HTTP_NOT_FOUND,
+                'Not Found',
+                $this->errorType('image-job-not-found'),
+                sprintf('Image job with id "%s" was not found.', $jobId),
+            );
+        }
+
+        $rawImageId = $job['image_id'] ?? null;
+
+        return new JsonResponse([
+            'status' => (string) ($job['status'] ?? ''),
+            'image_id' => null === $rawImageId ? null : (int) $rawImageId,
+            'error' => $job['error'] ?? null,
+        ]);
+    }
+
+    #[Route('/images', name: 'image_list', methods: ['GET'])]
+    public function list(
+        Request $request,
+        ImageRepository $imageRepository,
+        ImageAnalysisCostRepository $imageAnalysisCostRepository,
+    ): JsonResponse {
+        $idInput = $request->query->get('id');
+        $idsInput = $request->query->get('ids');
+        $hasIdFilter = null !== $idInput && '' !== (string) $idInput;
+        $hasIdsFilter = null !== $idsInput && '' !== (string) $idsInput;
+
+        if ($hasIdFilter && $hasIdsFilter) {
+            return $this->problem(
+                Response::HTTP_BAD_REQUEST,
+                'Bad Request',
+                $this->errorType('image-list-filter-conflict'),
+                'Query parameters "id" and "ids" are mutually exclusive.',
+            );
+        }
+
+        $filteredIds = null;
+        if ($hasIdFilter) {
+            $id = filter_var($idInput, \FILTER_VALIDATE_INT);
+            if (!is_int($id) || $id < 1) {
+                return $this->problem(
+                    Response::HTTP_BAD_REQUEST,
+                    'Bad Request',
+                    $this->errorType('image-list-id-invalid'),
+                    'Query parameter "id" must be an integer greater than or equal to 1.',
+                );
+            }
+            $filteredIds = [$id];
+        }
+
+        if ($hasIdsFilter) {
+            $parsedIds = array_values(array_filter(array_map('trim', explode(',', (string) $idsInput)), static fn (string $item): bool => '' !== $item));
+            if ([] === $parsedIds) {
+                return $this->problem(
+                    Response::HTTP_BAD_REQUEST,
+                    'Bad Request',
+                    $this->errorType('image-list-ids-invalid'),
+                    'Query parameter "ids" must be a comma-separated list of integers.',
+                );
+            }
+
+            $filteredIds = [];
+            foreach ($parsedIds as $value) {
+                $id = filter_var($value, \FILTER_VALIDATE_INT);
+                if (!is_int($id) || $id < 1) {
+                    return $this->problem(
+                        Response::HTTP_BAD_REQUEST,
+                        'Bad Request',
+                        $this->errorType('image-list-ids-invalid'),
+                        'Query parameter "ids" must be a comma-separated list of integers.',
+                    );
+                }
+                $filteredIds[] = $id;
+            }
+
+            $filteredIds = array_values(array_unique($filteredIds));
+        }
+
+        if (is_array($filteredIds)) {
+            $items = $imageRepository->listByIds($filteredIds);
+
+            return $this->buildListResponse(
+                items: $items,
+                page: 1,
+                perPage: max(1, count($items)),
+                total: count($items),
+                imageAnalysisCostRepository: $imageAnalysisCostRepository,
+            );
+        }
+
         $pageInput = $request->query->get('page');
         $perPageInput = $request->query->get('per_page');
 
@@ -190,35 +285,32 @@ final class ImageController extends AbstractApiController
         }
 
         $result = $imageRepository->listPaginated($page, $perPage);
-        $total = (int) $result['total'];
-        $totalPages = (int) max(1, (int) ceil($total / $perPage));
 
-        return new JsonResponse([
-            'data' => array_map(
-                fn (array $row): array => $this->normalizeImageListRow($row),
-                $result['items'],
-            ),
-            'meta' => [
-                'page' => $page,
-                'per_page' => $perPage,
-                'total' => $total,
-                'total_pages' => $totalPages,
-            ],
-        ]);
+        return $this->buildListResponse(
+            items: $result['items'],
+            page: $page,
+            perPage: $perPage,
+            total: (int) $result['total'],
+            imageAnalysisCostRepository: $imageAnalysisCostRepository,
+        );
     }
 
     /**
-     * @param array<string,mixed> $row
+     * @param array<string,mixed>      $row
+     * @param array<string,mixed>|null $cost
      *
      * @return array<string,mixed>
      */
-    private function normalizeImageListRow(array $row): array
+    private function normalizeImageListRow(array $row, ?array $cost): array
     {
         $id = (int) ($row['id'] ?? 0);
         $analysisJson = null;
         if (is_string($row['analysis_json'] ?? null) && '' !== $row['analysis_json']) {
             try {
                 $analysisJson = json_decode($row['analysis_json'], true, 512, \JSON_THROW_ON_ERROR);
+                if (is_array($analysisJson)) {
+                    unset($analysisJson['prompt'], $analysisJson['image_variant']);
+                }
             } catch (\JsonException) {
                 $analysisJson = null;
             }
@@ -242,7 +334,60 @@ final class ImageController extends AbstractApiController
             'analysis' => [
                 'status' => $row['analysis_status'] ?? null,
                 'result' => $analysisJson,
+                'cost' => $this->normalizeAnalysisCost($cost),
             ],
         ];
+    }
+
+    /**
+     * @param array<string,mixed>|null $cost
+     *
+     * @return array<string,mixed>|null
+     */
+    private function normalizeAnalysisCost(?array $cost): ?array
+    {
+        if (null === $cost) {
+            return null;
+        }
+
+        return [
+            'model' => (string) ($cost['model'] ?? ''),
+            'input_tokens' => (int) ($cost['input_tokens'] ?? 0),
+            'output_tokens' => (int) ($cost['output_tokens'] ?? 0),
+            'total_tokens' => (int) ($cost['total_tokens'] ?? 0),
+            'estimated_cost' => (float) ($cost['estimated_cost'] ?? 0.0),
+        ];
+    }
+
+    /**
+     * @param list<array<string,mixed>> $items
+     */
+    private function buildListResponse(
+        array $items,
+        int $page,
+        int $perPage,
+        int $total,
+        ImageAnalysisCostRepository $imageAnalysisCostRepository,
+    ): JsonResponse {
+        $totalPages = (int) max(1, (int) ceil($total / max(1, $perPage)));
+        $costsByImageId = $imageAnalysisCostRepository->findLatestByImageIds(
+            array_map(
+                static fn (array $row): int => (int) ($row['id'] ?? 0),
+                $items,
+            ),
+        );
+
+        return new JsonResponse([
+            'data' => array_map(
+                fn (array $row): array => $this->normalizeImageListRow($row, $costsByImageId[(int) ($row['id'] ?? 0)] ?? null),
+                $items,
+            ),
+            'meta' => [
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'total_pages' => $totalPages,
+            ],
+        ]);
     }
 }

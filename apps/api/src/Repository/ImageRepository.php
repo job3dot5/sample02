@@ -133,6 +133,29 @@ final class ImageRepository
         ];
     }
 
+    /**
+     * @param list<int> $ids
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function listByIds(array $ids): array
+    {
+        $this->ensureTableExists();
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if ([] === $ids) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        $types = array_fill(0, count($ids), ParameterType::INTEGER);
+
+        return $this->connection->fetchAllAssociative(
+            sprintf('SELECT * FROM %s WHERE id IN (%s) ORDER BY id DESC', self::TABLE_NAME, $placeholders),
+            $ids,
+            $types,
+        );
+    }
+
     private function ensureTableExists(): void
     {
         if ($this->tableReady) {

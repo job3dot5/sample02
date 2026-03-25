@@ -4,15 +4,17 @@ declare(strict_types=1);
 
 namespace App\Service\ImageAnalysis;
 
+use App\Repository\ImageAnalysisCostRepository;
 use App\Repository\ImageRepository;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-use Symfony\Contracts\HttpClient\ResponseInterface;
 
 final readonly class ImageAnalysisService
 {
     public function __construct(
         private ImageRepository $imageRepository,
+        private ImageAnalysisCostRepository $imageAnalysisCostRepository,
+        private GptApiCostEstimator $gptApiCostEstimator,
         private HttpClientInterface $httpClient,
         private ?string $openAiApiKey,
         private string $openAiModel,
@@ -57,18 +59,19 @@ final readonly class ImageAnalysisService
         }
 
         try {
-            $analysis = $this->callVisionApi($absolutePath, $apiKey);
+            $apiResponse = $this->callVisionApi($absolutePath, $apiKey);
             $this->imageRepository->saveAnalysisPayload(
                 $imageId,
                 'completed',
                 [
-                    ...$analysis->toArray(),
+                    ...$apiResponse->analysis->toArray(),
                     'prompt' => ImageAnalysisContract::PROMPT,
                     'image_variant' => 'resized',
                 ],
                 model: $this->openAiModel,
                 error: null,
             );
+            $this->persistEstimatedCost($imageId, $apiResponse);
         } catch (\Throwable $exception) {
             $this->imageRepository->saveAnalysisPayload(
                 $imageId,
@@ -81,7 +84,7 @@ final readonly class ImageAnalysisService
         }
     }
 
-    private function callVisionApi(string $absolutePath, string $apiKey): ImageAnalysisResult
+    private function callVisionApi(string $absolutePath, string $apiKey): ImageAnalysisApiResponse
     {
         $raw = file_get_contents($absolutePath);
         if (false === $raw) {
@@ -123,15 +126,25 @@ final readonly class ImageAnalysisService
             ],
         ]);
 
-        $raw = $this->extractOutputText($response);
+        $payload = $response->toArray();
+        $rawOutput = $this->extractOutputText($payload);
+        $analysis = $this->parseRawResponse($rawOutput);
+        $usage = $this->extractUsage($payload);
 
-        return $this->parseRawResponse($raw);
+        return new ImageAnalysisApiResponse(
+            $analysis,
+            $this->extractModel($payload),
+            $usage['input_tokens'],
+            $usage['output_tokens'],
+            $usage['total_tokens'],
+        );
     }
 
-    private function extractOutputText(ResponseInterface $response): string
+    /**
+     * @param array<string,mixed> $payload
+     */
+    private function extractOutputText(array $payload): string
     {
-        $payload = $response->toArray();
-
         // shortcut (rare)
         if (!empty($payload['output_text'])) {
             return trim((string) $payload['output_text']);
@@ -156,6 +169,35 @@ final readonly class ImageAnalysisService
         throw new \RuntimeException('OpenAI response did not include usable output.');
     }
 
+    /**
+     * @param array<string,mixed> $payload
+     *
+     * @return array{input_tokens:int,output_tokens:int,total_tokens:int}
+     */
+    private function extractUsage(array $payload): array
+    {
+        $usage = is_array($payload['usage'] ?? null) ? $payload['usage'] : [];
+        $inputTokens = (int) ($usage['input_tokens'] ?? 0);
+        $outputTokens = (int) ($usage['output_tokens'] ?? 0);
+        $totalTokens = (int) ($usage['total_tokens'] ?? ($inputTokens + $outputTokens));
+
+        return [
+            'input_tokens' => max(0, $inputTokens),
+            'output_tokens' => max(0, $outputTokens),
+            'total_tokens' => max(0, $totalTokens),
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     */
+    private function extractModel(array $payload): string
+    {
+        $model = trim((string) ($payload['model'] ?? ''));
+
+        return '' !== $model ? $model : $this->openAiModel;
+    }
+
     private function parseRawResponse(string $raw): ImageAnalysisResult
     {
         $analysis = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
@@ -173,6 +215,34 @@ final readonly class ImageAnalysisService
             trim((string) ($analysis['description'] ?? '')),
             array_values(array_unique(array_map('trim', $tags))),
             trim((string) ($analysis['category'] ?? '')),
+        );
+    }
+
+    private function persistEstimatedCost(int $imageId, ImageAnalysisApiResponse $apiResponse): void
+    {
+        $estimate = $this->gptApiCostEstimator->estimate(
+            $apiResponse->model,
+            $apiResponse->inputTokens,
+            $apiResponse->outputTokens,
+            $apiResponse->totalTokens,
+        );
+
+        if (null === $estimate) {
+            $this->imageProcessingLogger->warning('image.analysis.cost.pricing_not_found', [
+                'image_id' => $imageId,
+                'model' => $apiResponse->model,
+            ]);
+
+            return;
+        }
+
+        $this->imageAnalysisCostRepository->create(
+            $imageId,
+            $estimate['model'],
+            $estimate['input_tokens'],
+            $estimate['output_tokens'],
+            $estimate['total_tokens'],
+            $estimate['estimated_cost'],
         );
     }
 }

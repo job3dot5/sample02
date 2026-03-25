@@ -7,10 +7,16 @@ namespace App\Message;
 final readonly class ProcessImageUploadMessage
 {
     public function __construct(
+        private string $jobId,
         private string $stagedPath,
         private string $originalFilename,
         private string $mimeType,
     ) {
+    }
+
+    public function jobId(): string
+    {
+        return $this->jobId;
     }
 
     public function stagedPath(): string

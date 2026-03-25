@@ -6,6 +6,7 @@ namespace App\MessageHandler;
 
 use App\Message\AnalyzeImageMessage;
 use App\Message\ProcessImageUploadMessage;
+use App\Repository\JobTrackingRepository;
 use App\Service\ImageService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -18,13 +19,16 @@ final readonly class ProcessImageUploadMessageHandler
     public function __construct(
         private ImageService $imageService,
         private MessageBusInterface $messageBus,
+        private JobTrackingRepository $jobTrackingRepository,
         private LoggerInterface $imageProcessingLogger,
     ) {
     }
 
     public function __invoke(ProcessImageUploadMessage $message): void
     {
+        $this->jobTrackingRepository->markProcessing($message->jobId());
         $this->imageProcessingLogger->info('image.worker.started', [
+            'job_id' => $message->jobId(),
             'staged_path' => $message->stagedPath(),
             'original_filename' => $message->originalFilename(),
             'mime_type' => $message->mimeType(),
@@ -46,13 +50,17 @@ final readonly class ProcessImageUploadMessageHandler
                 ]);
             }
 
+            $this->jobTrackingRepository->markCompleted($message->jobId(), $imageId);
             $this->imageProcessingLogger->info('image.worker.succeeded', [
+                'job_id' => $message->jobId(),
                 'image_id' => $imageId,
                 'staged_path' => $message->stagedPath(),
                 'original_filename' => $message->originalFilename(),
             ]);
         } catch (\Throwable $exception) {
+            $this->jobTrackingRepository->markFailed($message->jobId(), $exception->getMessage());
             $this->imageProcessingLogger->error('image.worker.failed', [
+                'job_id' => $message->jobId(),
                 'staged_path' => $message->stagedPath(),
                 'original_filename' => $message->originalFilename(),
                 'error' => $exception->getMessage(),

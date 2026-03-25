@@ -24,6 +24,10 @@ parameters:
     app.openai.api_key: '%env(default:app.openai.api_key.default:OPENAI_API_KEY)%'
     app.openai.model: '%env(OPENAI_MODEL)%'
     app.openai.endpoint: 'https://api.openai.com/v1/responses'
+    app.openai.model_pricing:
+        gpt-4.1-nano:
+            input: 0.0005
+            output: 0.0015
 
 services:
     # default configuration for services in *this* file
@@ -79,6 +83,10 @@ services:
             $openAiModel: '%app.openai.model%'
             $openAiEndpoint: '%app.openai.endpoint%'
             $projectDir: '%kernel.project_dir%'
+
+    App\Service\ImageAnalysis\GptApiCostEstimator:
+        arguments:
+            $pricing: '%app.openai.model_pricing%'
 
     App\EventSubscriber\ApiExceptionSubscriber:
         arguments:

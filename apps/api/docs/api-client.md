@@ -42,6 +42,34 @@ curl -X POST http://localhost/api/v1/images \
   -F "file=@/path/to/image.jpg"
 ```
 
+Poll upload job status (JWT required):
+
+```bash
+curl http://localhost/api/v1/image-jobs/<job_id> \
+  -H "Authorization: Bearer <token>"
+```
+
+List images (JWT required, paginated):
+
+```bash
+curl "http://localhost/api/v1/images?page=1&per_page=20" \
+  -H "Authorization: Bearer <token>"
+```
+
+List one image by id:
+
+```bash
+curl "http://localhost/api/v1/images?id=1" \
+  -H "Authorization: Bearer <token>"
+```
+
+List multiple images by ids:
+
+```bash
+curl "http://localhost/api/v1/images?ids=1,2,5" \
+  -H "Authorization: Bearer <token>"
+```
+
 Render an image by id (JWT required):
 
 ```bash
@@ -125,12 +153,61 @@ Create a second request:
 
 Note:
 - Keep Bruno auth mode disabled/none if you set `Authorization` manually in headers.
+- The response returns `job_id` and `status: queued`.
 
-### 5. GET `/api/v1/image/{id}` with bearer token
+### 5. GET `/api/v1/image-jobs/{job_id}` with bearer token (poll)
 
 Create a request:
 - Method: `GET`
-- URL: `https://sample02.dev/api/v1/image/{{image_id}}`
+- URL: `https://sample02.dev/api/v1/image-jobs/{{job_id}}`
+- Header: `Authorization: Bearer {{access_token}}`
+
+Response body:
+
+```json
+{
+  "status": "completed",
+  "image_id": 1,
+  "error": null
+}
+```
+
+Status values:
+- `queued`
+- `processing`
+- `completed`
+- `failed`
+
+When status is `completed`, use `image_id` for render requests.
+
+### 6. GET `/api/v1/images` with bearer token (list + filters)
+
+Create a request:
+- Method: `GET`
+- URL: `https://sample02.dev/api/v1/images`
+- Header: `Authorization: Bearer {{access_token}}`
+
+Supported query parameters:
+- `page` (integer >= 1, default `1`)
+- `per_page` (integer 1..100, default `20`)
+- `id` (single image id)
+- `ids` (comma-separated image ids: `1,2,5`)
+
+Rules:
+- `id` and `ids` are mutually exclusive.
+- When `id` or `ids` is provided, pagination parameters are ignored.
+- The response includes `analysis.cost` when AI analysis cost exists.
+
+Examples:
+- `https://sample02.dev/api/v1/images?page=1&per_page=20`
+- `https://sample02.dev/api/v1/images?id=1`
+- `https://sample02.dev/api/v1/images?ids=1,2,5`
+
+### 7. GET `/api/v1/image/{id}` with bearer token
+
+Create a request:
+- Method: `GET`
+- URL: `https://sample02.dev/api/v1/image/{{image_id_from_job}}`
 - Optional query param: `variant` with `original`, `thumbnail`, or `resized`
 - Header: `Authorization: Bearer {{access_token}}`
 

@@ -72,6 +72,14 @@ final class RouteTest extends KernelTestCase
         self::assertSame('application/problem+json', $response->headers->get('content-type'));
     }
 
+    public function testImageJobStatusRouteReturnsUnauthorizedWithoutToken(): void
+    {
+        $response = $this->request('GET', '/api/v1/image-jobs/2cf8bd7572819cdb2288f72389f96a53');
+
+        self::assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
+        self::assertSame('application/problem+json', $response->headers->get('content-type'));
+    }
+
     public function testOpenApiRouteReturnsSpec(): void
     {
         $response = $this->request('GET', '/docs/openapi.v1.yaml');

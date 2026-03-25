@@ -6,7 +6,9 @@ namespace App\Tests\MessageHandler;
 
 use App\Message\AnalyzeImageMessage;
 use App\MessageHandler\AnalyzeImageMessageHandler;
+use App\Repository\ImageAnalysisCostRepository;
 use App\Repository\ImageRepository;
+use App\Service\ImageAnalysis\GptApiCostEstimator;
 use App\Service\ImageAnalysis\ImageAnalysisService;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\TestCase;
@@ -19,10 +21,13 @@ final class AnalyzeImageMessageHandlerTest extends TestCase
     public function testHandlerMarksAnalysisAsSkippedWhenApiKeyIsMissing(): void
     {
         $repository = $this->createRepository();
+        $costRepository = $this->createCostRepository();
         $imageId = $this->createImageRow($repository);
         $handler = new AnalyzeImageMessageHandler(
             new ImageAnalysisService(
                 $repository,
+                $costRepository,
+                $this->createCostEstimator(),
                 new MockHttpClient(),
                 '',
                 'gpt-4.1-nano',
@@ -39,17 +44,27 @@ final class AnalyzeImageMessageHandlerTest extends TestCase
         self::assertIsArray($saved);
         self::assertSame('skipped', $saved['analysis_status']);
         self::assertSame('missing_openai_api_key', $saved['analysis_error']);
+        self::assertNull($costRepository->findLatestByImageId($imageId));
     }
 
     public function testHandlerStoresPendingAnalysisPayloadWhenApiKeyIsConfigured(): void
     {
         $repository = $this->createRepository();
+        $costRepository = $this->createCostRepository();
         $imageId = $this->createImageRow($repository);
         $handler = new AnalyzeImageMessageHandler(
             new ImageAnalysisService(
                 $repository,
+                $costRepository,
+                $this->createCostEstimator(),
                 new MockHttpClient([
                     new MockResponse(json_encode([
+                        'model' => 'gpt-4.1-nano-2025-04-14',
+                        'usage' => [
+                            'input_tokens' => 1200,
+                            'output_tokens' => 400,
+                            'total_tokens' => 1600,
+                        ],
                         'output_text' => '{"description":"A red object.","tags":["red","object"],"category":"object"}',
                     ], \JSON_THROW_ON_ERROR)),
                 ]),
@@ -69,6 +84,14 @@ final class AnalyzeImageMessageHandlerTest extends TestCase
         self::assertSame('completed', $saved['analysis_status']);
         self::assertSame('gpt-4.1-nano', $saved['analysis_model']);
         self::assertJson((string) $saved['analysis_json']);
+
+        $savedCost = $costRepository->findLatestByImageId($imageId);
+        self::assertNotNull($savedCost);
+        self::assertSame('gpt-4.1-nano', $savedCost['model']);
+        self::assertSame(1200, (int) $savedCost['input_tokens']);
+        self::assertSame(400, (int) $savedCost['output_tokens']);
+        self::assertSame(1600, (int) $savedCost['total_tokens']);
+        self::assertSame(0.0012, (float) $savedCost['estimated_cost']);
     }
 
     private function createProjectDirWithResizedImage(): string
@@ -89,6 +112,26 @@ final class AnalyzeImageMessageHandlerTest extends TestCase
         ]);
 
         return new ImageRepository($connection);
+    }
+
+    private function createCostRepository(): ImageAnalysisCostRepository
+    {
+        $connection = DriverManager::getConnection([
+            'driver' => 'pdo_sqlite',
+            'memory' => true,
+        ]);
+
+        return new ImageAnalysisCostRepository($connection);
+    }
+
+    private function createCostEstimator(): GptApiCostEstimator
+    {
+        return new GptApiCostEstimator([
+            'gpt-4.1-nano' => [
+                'input' => 0.0005,
+                'output' => 0.0015,
+            ],
+        ]);
     }
 
     private function createImageRow(ImageRepository $repository): int
