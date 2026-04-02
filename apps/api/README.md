@@ -15,7 +15,7 @@ It demonstrates how to build a complete API workflow, from authentication and fi
 
 ## Features Demonstrated
 - REST API without API Platform (explicit controllers/routes)
-- Contract-first OpenAPI (`openapi/openapi.v1.yaml`)
+- Contract-first OpenAPI [/docs/openapi.v1.yaml](./openapi/openapi.v1.yaml)
 - Minimal health endpoint (`/api/v1/health`)
 - JWT authentication with `lexik/jwt-authentication-bundle`
 - Authenticated async image pipeline (`symfony/messenger` + Doctrine transport + workers)
@@ -25,7 +25,7 @@ It demonstrates how to build a complete API workflow, from authentication and fi
 ## Technical Stack
 
 - PHP 8.3
-- Symfony (LTS)
+- Symfony 7.4 (LTS)
 - REST API (JSON + Symfony Routing/Controllers)
 - OpenAPI 3.1 (`openapi/openapi.v1.yaml`)
 - JWT auth (`lexik/jwt-authentication-bundle`, bearer tokens)
@@ -45,6 +45,12 @@ It demonstrates how to build a complete API workflow, from authentication and fi
   optional filters: `id=<image_id>` or `ids=1,2,3`
 - `GET /api/v1/image/{id}?variant=original|thumbnail|resized` (requires `Authorization: Bearer <token>`)
 - `GET /docs/openapi.v1.yaml`
+
+Upload note:
+- Current runtime limits are inherited from PHP ini in this stack:
+  - `upload_max_filesize=2M`
+  - `post_max_size=8M`
+- Files above `2M` are rejected before asynchronous processing starts.
 
 API client authentication and usage details are documented in [docs/api-client.md](docs/api-client.md).
 Error responses follow `application/problem+json`.

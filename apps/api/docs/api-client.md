@@ -4,6 +4,8 @@
 
 This API uses JWT bearer authentication (`lexik/jwt-authentication-bundle`).
 
+OpenApi contract is available publicly on GET [/docs/openapi.v1.yaml](../openapi/openapi.v1.yaml)
+
 Authentication flow:
 - Call `POST /api/v1/login` with JSON credentials to obtain a JWT.
 - Send this token on protected endpoints with `Authorization: Bearer <token>`.
@@ -34,7 +36,7 @@ curl http://localhost/api/v1/me \
   -H "Authorization: Bearer <token>"
 ```
 
-Upload an image (JWT required):
+Upload an image:
 
 ```bash
 curl -X POST http://localhost/api/v1/images \
@@ -42,14 +44,14 @@ curl -X POST http://localhost/api/v1/images \
   -F "file=@/path/to/image.jpg"
 ```
 
-Poll upload job status (JWT required):
+Poll upload job status:
 
 ```bash
 curl http://localhost/api/v1/image-jobs/<job_id> \
   -H "Authorization: Bearer <token>"
 ```
 
-List images (JWT required, paginated):
+List images (paginated):
 
 ```bash
 curl "http://localhost/api/v1/images?page=1&per_page=20" \
@@ -70,7 +72,7 @@ curl "http://localhost/api/v1/images?ids=1,2,5" \
   -H "Authorization: Bearer <token>"
 ```
 
-Render an image by id (JWT required):
+Render an image by id:
 
 ```bash
 curl http://localhost/api/v1/image/1 \
@@ -142,7 +144,7 @@ if (!payload?.token) {
 bru.setVar("access_token", payload.token);
 ```
 
-### 4. POST `/api/v1/images` with bearer token
+### 4. POST `/api/v1/images`
 
 Create a second request:
 - Method: `POST`
@@ -155,7 +157,7 @@ Note:
 - Keep Bruno auth mode disabled/none if you set `Authorization` manually in headers.
 - The response returns `job_id` and `status: queued`.
 
-### 5. GET `/api/v1/image-jobs/{job_id}` with bearer token (poll)
+### 5. GET `/api/v1/image-jobs/{job_id}`
 
 Create a request:
 - Method: `GET`
@@ -180,7 +182,7 @@ Status values:
 
 When status is `completed`, use `image_id` for render requests.
 
-### 6. GET `/api/v1/images` with bearer token (list + filters)
+### 6. GET `/api/v1/images`
 
 Create a request:
 - Method: `GET`
@@ -203,7 +205,7 @@ Examples:
 - `https://sample02.dev/api/v1/images?id=1`
 - `https://sample02.dev/api/v1/images?ids=1,2,5`
 
-### 7. GET `/api/v1/image/{id}` with bearer token
+### 7. GET `/api/v1/image/{id}`
 
 Create a request:
 - Method: `GET`

@@ -1,0 +1,292 @@
+:root {
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  color: #1e293b;
+  background: radial-gradient(circle at top left, #d8f2ff 0%, #f3f7ff 45%, #eefcf5 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: inherit;
+}
+
+.container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.card {
+  width: min(100%, 760px);
+  border-radius: 20px;
+  padding: 1.8rem;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 18px 40px rgba(20, 45, 90, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+}
+
+.top-menu {
+  display: flex;
+  gap: 0.65rem;
+  margin-bottom: 1.2rem;
+}
+
+.menu-button {
+  min-width: auto;
+  padding: 0.62rem 1rem;
+  background: #e5edf8;
+  color: #245089;
+}
+
+.menu-button.active {
+  background: linear-gradient(135deg, #0f6de2 0%, #128ad7 100%);
+  color: #ffffff;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 2.8vw, 2rem);
+}
+
+.subtitle {
+  margin: 0.6rem 0 1.4rem;
+  color: #475569;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.label {
+  font-weight: 600;
+  color: #334155;
+}
+
+.file-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+button {
+  width: fit-content;
+  min-width: 190px;
+  padding: 0.72rem 1rem;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0f6de2 0%, #128ad7 100%);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(15, 109, 226, 0.24);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.info,
+.status,
+.success,
+.error {
+  margin: 0.9rem 0 0;
+  line-height: 1.4;
+}
+
+.info {
+  color: #0f5f96;
+}
+
+.status {
+  color: #334155;
+}
+
+.success {
+  color: #047857;
+}
+
+.error {
+  color: #b91c1c;
+}
+
+.list-toolbar {
+  display: flex;
+  gap: 0.65rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.image-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.image-row {
+  border: 1px solid #d5e0ee;
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.image-row-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+details {
+  margin-top: 0.7rem;
+}
+
+summary {
+  cursor: pointer;
+  color: #0f5f96;
+  font-weight: 600;
+}
+
+.json-block {
+  margin: 0.6rem 0 0;
+  border-radius: 10px;
+  background: #f8fbff;
+  border: 1px solid #e0e8f3;
+  padding: 0.75rem;
+  overflow: auto;
+  font-size: 0.82rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 22, 39, 0.54);
+  padding: 1rem;
+}
+
+.modal {
+  width: min(100%, 920px);
+  max-height: 88vh;
+  overflow: auto;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.24);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.modal-header h2 {
+  margin: 0;
+}
+
+.close-button {
+  min-width: auto;
+  background: #e9eef6;
+  color: #334155;
+}
+
+.modal-content {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+}
+
+.modal-image {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 10px;
+}
+
+.loader-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 3px solid #cbdff6;
+  border-top-color: #0f6de2;
+  animation: spin 0.85s linear infinite;
+}
+
+.dot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-left: 0.45rem;
+  border-radius: 50%;
+  background: #0f6de2;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 560px) {
+  .card {
+    padding: 1.25rem;
+    border-radius: 14px;
+  }
+
+  button {
+    width: 100%;
+  }
+}

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Sample REST API
   version: 1.0.0
-  description: Sample REST API v1 with JWT authentication and message queue.
+  description: REST API v1 for image upload with JWT authentication and asynchronous processing.
 servers:
   - url: /
 paths:

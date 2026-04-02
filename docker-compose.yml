@@ -41,3 +41,51 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - php
+
+  # -----------------------------------------------------------------------------
+  # BFF + Frontend DEV ONLY
+  # -----------------------------------------------------------------------------
+  # These backend/frontend services are included for local development and
+  # demonstration of API consumption.
+  # In production, they should run on separate infrastructure/servers from the
+  # Symfony API stack defined above.
+  # -----------------------------------------------------------------------------
+  backend:
+    image: node:22-bookworm-slim
+    working_dir: /usr/src/app
+    command: ["sh", "-lc", "npm install && npm run dev"]
+    environment:
+      PORT: "3000"
+      API_BASE_URL: ${BACKEND_API_BASE_URL:-https://nginx}
+      # Dev only: nginx certificate is self-signed in this stack.
+      NODE_TLS_REJECT_UNAUTHORIZED: ${BACKEND_NODE_TLS_REJECT_UNAUTHORIZED:-0}
+      API_USERNAME: ${BACKEND_API_USERNAME:-change_me}
+      API_PASSWORD: ${BACKEND_API_PASSWORD:-change_me}
+      FRONTEND_ORIGIN: ${BACKEND_FRONTEND_ORIGIN:-http://localhost:5173}
+      JWT_ISSUER: ${BACKEND_JWT_ISSUER:-urn:sample02:api}
+      JWT_AUDIENCE: ${BACKEND_JWT_AUDIENCE:-urn:sample02:client}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/backend:/usr/src/app
+      - backend_node_modules:/usr/src/app/node_modules
+    depends_on:
+      - nginx
+
+  frontend:
+    image: node:22-bookworm-slim
+    working_dir: /usr/src/app
+    command: ["sh", "-lc", "npm install && npm run dev -- --host 0.0.0.0 --port 5173"]
+    environment:
+      VITE_BACKEND_URL: ${FRONTEND_BACKEND_URL:-http://localhost:3000}
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./apps/frontend:/usr/src/app
+      - frontend_node_modules:/usr/src/app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  backend_node_modules:
+  frontend_node_modules:
