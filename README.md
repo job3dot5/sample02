@@ -135,6 +135,8 @@ Two access modes are available after startup:
 Use `sample02.dev` when you want to test the API domain setup with HTTPS.
 Use `localhost` when you want to iterate quickly on the frontend/BFF pair.
 
+## Workers 
+
 The `worker-upload` service consumes `transport_async_image_upload` messages to process image uploads asynchronously.
 The `worker-analysis` service consumes `transport_async_image_analysis` messages for optional AI tagging/enrichment.
 
