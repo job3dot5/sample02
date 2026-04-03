@@ -9,21 +9,21 @@ The browser never handles `API_USERNAME`, `API_PASSWORD`, or bearer tokens.
 
 Related frontend documentation: [../frontend/README.md](../frontend/README.md)
 
-## Stack technique (BFF)
+## Technical stack (BFF)
 
 - Node.js 22
 - Express 4
-- openapi-client-axios (génération client depuis `/docs/openapi.v1.yaml`)
-- Axios (transport HTTP via le client OpenAPI)
-- Multer (gestion `multipart/form-data` pour l'upload)
+- openapi-client-axios (client generated from `/docs/openapi.v1.yaml`)
+- Axios (HTTP transport via OpenAPI client)
+- Multer (`multipart/form-data` for upload)
 - CORS
 - Dotenv (configuration)
 
-## Stack de l'exemple complet
+## Full example stack
 
 - Backend BFF: Node.js + Express (`apps/backend`)
 - Frontend: Vue 3 + Vite (`apps/frontend`)
-- API principale: Symfony REST API (`apps/api`)
+- API: Symfony REST API (`apps/api`)
 
 ## Architecture
 
