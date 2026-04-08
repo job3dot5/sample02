@@ -70,7 +70,7 @@ This pattern reflects real-world usage of exposed APIs in multi-client environme
 |------------|------|------|
 | `apps/api` | Core REST API | PHP 8.3, Symfony 7.4, OpenAPI 3.1, JWT, Messenger |
 | `apps/backend` | BFF / Secure proxy | Node.js 22, Express 4, OpenAPI-driven client |
-| `apps/frontend` | UI client | Vue 3, Vite 5 |
+| `apps/frontend` | UI client | Vue 3, Vite 5, TypeScript, Vue Router 4 |
 
 This setup highlights a contract-first API design combined with a realistic consumption model reflecting production-grade architectures.
 

@@ -41,10 +41,16 @@ body {
 }
 
 .menu-button {
+  display: inline-block;
   min-width: auto;
   padding: 0.62rem 1rem;
+  border-radius: 10px;
   background: #e5edf8;
   color: #245089;
+}
+
+.menu-link {
+  text-decoration: none;
 }
 
 .menu-button.active {
@@ -101,6 +107,11 @@ button {
 }
 
 button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(15, 109, 226, 0.24);
+}
+
+.menu-link:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 20px rgba(15, 109, 226, 0.24);
 }

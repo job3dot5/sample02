@@ -1,36 +1,26 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useRoute } from 'vue-router';
 import type { AppView } from '../types/app';
 
-defineProps<{
-  activeView: AppView;
-}>();
+const route = useRoute();
 
-const emit = defineEmits<{
-  (e: 'change-view', view: AppView): void;
-}>();
+const currentView = computed<AppView | null>(() => {
+  const routeName = route.name;
+  return routeName === 'upload' || routeName === 'list' ? routeName : null;
+});
 
-function changeView(view: AppView): void {
-  emit('change-view', view);
-}
+const isUploadActive = computed(() => currentView.value === 'upload');
+const isListActive = computed(() => currentView.value === 'list');
 </script>
 
 <template>
   <header class="top-menu">
-    <button
-      class="menu-button"
-      :class="{ active: activeView === 'upload' }"
-      type="button"
-      @click="changeView('upload')"
-    >
+    <RouterLink class="menu-button menu-link" :class="{ active: isUploadActive }" to="/upload">
       Upload image
-    </button>
-    <button
-      class="menu-button"
-      :class="{ active: activeView === 'list' }"
-      type="button"
-      @click="changeView('list')"
-    >
+    </RouterLink>
+    <RouterLink class="menu-button menu-link" :class="{ active: isListActive }" to="/list">
       Lister images
-    </button>
+    </RouterLink>
   </header>
 </template>

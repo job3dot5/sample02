@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue';
 import { routes } from '../config/routes';
+import { createCancelableRequest } from '../composables/createCancelableRequest';
 
 interface ImageErrorPayload {
   detail?: string;
@@ -23,6 +24,8 @@ const emit = defineEmits<{
 const isViewerLoading = ref<boolean>(false);
 const viewerError = ref<string>('');
 const viewerImageUrl = ref<string>('');
+let activeImageRequestId = 0;
+const { request: requestImage, cancel: cancelImageRequest } = createCancelableRequest();
 
 function clearViewerImageUrl(): void {
   if (viewerImageUrl.value) {
@@ -36,12 +39,13 @@ async function loadImage(id: number): Promise<void> {
     return;
   }
 
+  const requestId = ++activeImageRequestId;
   isViewerLoading.value = true;
   viewerError.value = '';
   clearViewerImageUrl();
 
   try {
-    const response = await fetch(routes.imageById(id));
+    const response = await requestImage(routes.imageById(id));
 
     if (!response.ok) {
       let errorMessage = "L'image n'a pas pu etre chargee.";
@@ -60,9 +64,14 @@ async function loadImage(id: number): Promise<void> {
     const blob = await response.blob();
     viewerImageUrl.value = URL.createObjectURL(blob);
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return;
+    }
     viewerError.value = err instanceof Error ? err.message : 'Erreur inconnue.';
   } finally {
-    isViewerLoading.value = false;
+    if (requestId === activeImageRequestId) {
+      isViewerLoading.value = false;
+    }
   }
 }
 
@@ -81,6 +90,7 @@ watch(
 );
 
 onUnmounted(() => {
+  cancelImageRequest();
   clearViewerImageUrl();
 });
 </script>

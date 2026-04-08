@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onUnmounted, ref } from 'vue';
 import { routes } from '../config/routes';
+import { createCancelableRequest } from '../composables/createCancelableRequest';
+import { useUploadJobPolling } from '../composables/useUploadJobPolling';
 
 interface ApiErrorPayload {
   detail?: string;
@@ -8,11 +10,6 @@ interface ApiErrorPayload {
   title?: string;
   error?: string;
   message?: string;
-}
-
-interface UploadJobStatusPayload extends ApiErrorPayload {
-  status?: string;
-  image_id?: number | null;
 }
 
 interface UploadQueuePayload extends ApiErrorPayload {
@@ -24,14 +21,20 @@ interface UploadQueuePayload extends ApiErrorPayload {
 
 const selectedFile = ref<File | null>(null);
 const isUploading = ref<boolean>(false);
-const statusLoading = ref<boolean>(false);
 const uploadAckMessage = ref<string>('');
-const uploadFinalMessage = ref<string>('');
-const uploadJobStatus = ref<string>('');
 const uploadJobId = ref<string>('');
-const uploadedImageId = ref<number | null>(null);
-const uploadError = ref<string>('');
-let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let activeUploadRequestId = 0;
+const { request: requestUploadImage, cancel: cancelUploadImageRequest } = createCancelableRequest();
+const {
+  statusLoading,
+  uploadFinalMessage,
+  uploadJobStatus,
+  uploadedImageId,
+  uploadError,
+  resetPollingState,
+  stopPolling,
+  startPolling
+} = useUploadJobPolling(getApiErrorMessage);
 
 function getApiErrorMessage({
   status,
@@ -78,61 +81,8 @@ function getApiErrorMessage({
 
 function resetUploadStatusView(): void {
   uploadAckMessage.value = '';
-  uploadFinalMessage.value = '';
-  uploadJobStatus.value = '';
   uploadJobId.value = '';
-  uploadedImageId.value = null;
-}
-
-function stopPolling(): void {
-  if (pollTimer) {
-    clearTimeout(pollTimer);
-    pollTimer = null;
-  }
-}
-
-async function pollJobStatus(currentJobId: string): Promise<void> {
-  statusLoading.value = true;
-
-  try {
-    const response = await fetch(routes.imageJobsById(currentJobId));
-    const payload = (await response.json()) as UploadJobStatusPayload;
-
-    if (!response.ok) {
-      throw new Error(
-        getApiErrorMessage({
-          status: response.status,
-          payload,
-          fallback: 'Statut du job indisponible.'
-        })
-      );
-    }
-
-    const status = payload.status || 'unknown';
-    uploadJobStatus.value = status;
-    uploadedImageId.value = payload.image_id ?? null;
-
-    if (status === 'completed') {
-      uploadFinalMessage.value = 'Upload termine.';
-      stopPolling();
-      return;
-    }
-
-    if (status === 'failed') {
-      uploadFinalMessage.value = payload.error || 'Le traitement a echoue.';
-      stopPolling();
-      return;
-    }
-
-    pollTimer = setTimeout(() => {
-      void pollJobStatus(currentJobId);
-    }, 500);
-  } catch (err) {
-    uploadError.value = err instanceof Error ? err.message : 'Erreur inconnue.';
-    stopPolling();
-  } finally {
-    statusLoading.value = false;
-  }
+  resetPollingState();
 }
 
 function onFileChange(event: Event): void {
@@ -147,6 +97,7 @@ async function uploadImage(): Promise<void> {
     return;
   }
 
+  const requestId = ++activeUploadRequestId;
   isUploading.value = true;
   uploadError.value = '';
   resetUploadStatusView();
@@ -156,7 +107,7 @@ async function uploadImage(): Promise<void> {
     const formData = new FormData();
     formData.append('file', selectedFile.value);
 
-    const response = await fetch(routes.images, {
+    const response = await requestUploadImage(routes.images, {
       method: 'POST',
       body: formData
     });
@@ -178,20 +129,30 @@ async function uploadImage(): Promise<void> {
       throw new Error('La reponse ne contient pas de job_id.');
     }
 
+    if (requestId !== activeUploadRequestId) {
+      return;
+    }
+
     uploadJobId.value = queuedData.job_id;
     uploadJobStatus.value = queuedData.status || 'queued';
     uploadAckMessage.value =
       "L'image a ete envoyee, vous pouvez fermer cette page ou attendre pour voir le suivi de l'upload.";
 
-    void pollJobStatus(queuedData.job_id);
+    startPolling(queuedData.job_id);
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return;
+    }
     uploadError.value = err instanceof Error ? err.message : 'Erreur inconnue.';
   } finally {
-    isUploading.value = false;
+    if (requestId === activeUploadRequestId) {
+      isUploading.value = false;
+    }
   }
 }
 
 onUnmounted(() => {
+  cancelUploadImageRequest();
   stopPolling();
 });
 </script>

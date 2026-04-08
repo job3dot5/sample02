@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import ImageViewerModal from './ImageViewerModal.vue';
 import { routes } from '../config/routes';
+import { createCancelableRequest } from '../composables/createCancelableRequest';
 
 interface ImageItem {
   id: number;
@@ -35,6 +36,8 @@ const imagesMeta = ref<ImagesMeta | null>(null);
 const listPage = ref<number>(1);
 const isListLoading = ref<boolean>(false);
 const listError = ref<string>('');
+let activeRequestId = 0;
+const { request: requestImages, cancel: cancelImagesRequest } = createCancelableRequest();
 
 const selectedImageId = ref<number | null>(null);
 
@@ -42,23 +45,24 @@ function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function canGoPrevious(): boolean {
+const canGoPrevious = computed<boolean>(() => {
   const page = imagesMeta.value?.page ?? 1;
   return page > 1;
-}
+});
 
-function canGoNext(): boolean {
+const canGoNext = computed<boolean>(() => {
   const page = imagesMeta.value?.page ?? 1;
   const totalPages = imagesMeta.value?.total_pages ?? 1;
   return page < totalPages;
-}
+});
 
 async function loadImages(targetPage = 1): Promise<void> {
+  const requestId = ++activeRequestId;
   isListLoading.value = true;
   listError.value = '';
 
   try {
-    const response = await fetch(`${routes.images}?page=${targetPage}&per_page=5`);
+    const response = await requestImages(`${routes.images}?page=${targetPage}&per_page=5`);
     const payload = (await response.json()) as ImagesListPayload;
 
     if (!response.ok) {
@@ -75,9 +79,14 @@ async function loadImages(targetPage = 1): Promise<void> {
       : null;
     listPage.value = imagesMeta.value?.page ?? targetPage;
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return;
+    }
     listError.value = err instanceof Error ? err.message : 'Erreur inconnue.';
   } finally {
-    isListLoading.value = false;
+    if (requestId === activeRequestId) {
+      isListLoading.value = false;
+    }
   }
 }
 
@@ -99,6 +108,10 @@ watch(
     void loadImages(listPage.value);
   }
 );
+
+onUnmounted(() => {
+  cancelImagesRequest();
+});
 </script>
 
 <template>
@@ -107,13 +120,13 @@ watch(
     <p class="subtitle">Pagination a 5 images par page.</p>
 
     <div class="list-toolbar">
-      <button type="button" :disabled="isListLoading || !canGoPrevious()" @click="loadImages(listPage - 1)">
+      <button type="button" :disabled="isListLoading || !canGoPrevious" @click="loadImages(listPage - 1)">
         Page precedente
       </button>
       <button type="button" :disabled="isListLoading" @click="loadImages(listPage)">
         Actualiser
       </button>
-      <button type="button" :disabled="isListLoading || !canGoNext()" @click="loadImages(listPage + 1)">
+      <button type="button" :disabled="isListLoading || !canGoNext" @click="loadImages(listPage + 1)">
         Page suivante
       </button>
     </div>
