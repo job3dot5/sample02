@@ -1,19 +1,47 @@
-<script setup>
+<script setup lang="ts">
 import { onUnmounted, ref } from 'vue';
-import { routes } from '../config/routes.js';
+import { routes } from '../config/routes';
 
-const selectedFile = ref(null);
-const isUploading = ref(false);
-const statusLoading = ref(false);
-const uploadAckMessage = ref('');
-const uploadFinalMessage = ref('');
-const uploadJobStatus = ref('');
-const uploadJobId = ref('');
-const uploadedImageId = ref(null);
-const uploadError = ref('');
-let pollTimer = null;
+interface ApiErrorPayload {
+  detail?: string;
+  details?: string;
+  title?: string;
+  error?: string;
+  message?: string;
+}
 
-function getApiErrorMessage({ status, payload, fallback }) {
+interface UploadJobStatusPayload extends ApiErrorPayload {
+  status?: string;
+  image_id?: number | null;
+}
+
+interface UploadQueuePayload extends ApiErrorPayload {
+  data?: {
+    job_id?: string;
+    status?: string;
+  };
+}
+
+const selectedFile = ref<File | null>(null);
+const isUploading = ref<boolean>(false);
+const statusLoading = ref<boolean>(false);
+const uploadAckMessage = ref<string>('');
+const uploadFinalMessage = ref<string>('');
+const uploadJobStatus = ref<string>('');
+const uploadJobId = ref<string>('');
+const uploadedImageId = ref<number | null>(null);
+const uploadError = ref<string>('');
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+function getApiErrorMessage({
+  status,
+  payload,
+  fallback
+}: {
+  status: number;
+  payload: unknown;
+  fallback: string;
+}): string {
   if (status === 413) {
     return 'Fichier trop volumineux. Taille maximale: 2 Mo.';
   }
@@ -22,12 +50,13 @@ function getApiErrorMessage({ status, payload, fallback }) {
     return fallback;
   }
 
+  const errorPayload = payload as ApiErrorPayload;
   const rawMessage =
-    payload.detail ||
-    payload.details ||
-    payload.title ||
-    payload.error ||
-    payload.message ||
+    errorPayload.detail ||
+    errorPayload.details ||
+    errorPayload.title ||
+    errorPayload.error ||
+    errorPayload.message ||
     fallback;
 
   if (typeof rawMessage !== 'string') {
@@ -47,7 +76,7 @@ function getApiErrorMessage({ status, payload, fallback }) {
   return cleanMessage || fallback;
 }
 
-function resetUploadStatusView() {
+function resetUploadStatusView(): void {
   uploadAckMessage.value = '';
   uploadFinalMessage.value = '';
   uploadJobStatus.value = '';
@@ -55,19 +84,19 @@ function resetUploadStatusView() {
   uploadedImageId.value = null;
 }
 
-function stopPolling() {
+function stopPolling(): void {
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;
   }
 }
 
-async function pollJobStatus(currentJobId) {
+async function pollJobStatus(currentJobId: string): Promise<void> {
   statusLoading.value = true;
 
   try {
     const response = await fetch(routes.imageJobsById(currentJobId));
-    const payload = await response.json();
+    const payload = (await response.json()) as UploadJobStatusPayload;
 
     if (!response.ok) {
       throw new Error(
@@ -79,9 +108,9 @@ async function pollJobStatus(currentJobId) {
       );
     }
 
-    const status = payload?.status || 'unknown';
+    const status = payload.status || 'unknown';
     uploadJobStatus.value = status;
-    uploadedImageId.value = payload?.image_id ?? null;
+    uploadedImageId.value = payload.image_id ?? null;
 
     if (status === 'completed') {
       uploadFinalMessage.value = 'Upload termine.';
@@ -90,7 +119,7 @@ async function pollJobStatus(currentJobId) {
     }
 
     if (status === 'failed') {
-      uploadFinalMessage.value = payload?.error || 'Le traitement a echoue.';
+      uploadFinalMessage.value = payload.error || 'Le traitement a echoue.';
       stopPolling();
       return;
     }
@@ -106,12 +135,13 @@ async function pollJobStatus(currentJobId) {
   }
 }
 
-function onFileChange(event) {
-  const [file] = event.target.files || [];
-  selectedFile.value = file ?? null;
+function onFileChange(event: Event): void {
+  const input = event.target as HTMLInputElement | null;
+  const file = input?.files?.[0] ?? null;
+  selectedFile.value = file;
 }
 
-async function uploadImage() {
+async function uploadImage(): Promise<void> {
   if (!selectedFile.value) {
     uploadError.value = 'Merci de selectionner une image.';
     return;
@@ -130,7 +160,7 @@ async function uploadImage() {
       method: 'POST',
       body: formData
     });
-    const payload = await response.json();
+    const payload = (await response.json()) as UploadQueuePayload;
 
     if (!response.ok) {
       throw new Error(
@@ -142,7 +172,7 @@ async function uploadImage() {
       );
     }
 
-    const queuedData = payload?.data;
+    const queuedData = payload.data;
 
     if (!queuedData?.job_id) {
       throw new Error('La reponse ne contient pas de job_id.');

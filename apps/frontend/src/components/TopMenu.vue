@@ -1,14 +1,15 @@
-<script setup>
-defineProps({
-  activeView: {
-    type: String,
-    required: true
-  }
-});
+<script setup lang="ts">
+import type { AppView } from '../types/app';
 
-const emit = defineEmits(['change-view']);
+defineProps<{
+  activeView: AppView;
+}>();
 
-function changeView(view) {
+const emit = defineEmits<{
+  (e: 'change-view', view: AppView): void;
+}>();
+
+function changeView(view: AppView): void {
   emit('change-view', view);
 }
 </script>

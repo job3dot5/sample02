@@ -1,28 +1,37 @@
-<script setup>
+<script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue';
-import { routes } from '../config/routes.js';
+import { routes } from '../config/routes';
 
-const props = defineProps({
-  imageId: {
-    type: Number,
-    default: null
+interface ImageErrorPayload {
+  detail?: string;
+  error?: string;
+}
+
+const props = withDefaults(
+  defineProps<{
+    imageId: number | null;
+  }>(),
+  {
+    imageId: null
   }
-});
+);
 
-const emit = defineEmits(['close']);
+const emit = defineEmits<{
+  (e: 'close'): void;
+}>();
 
-const isViewerLoading = ref(false);
-const viewerError = ref('');
-const viewerImageUrl = ref('');
+const isViewerLoading = ref<boolean>(false);
+const viewerError = ref<string>('');
+const viewerImageUrl = ref<string>('');
 
-function clearViewerImageUrl() {
+function clearViewerImageUrl(): void {
   if (viewerImageUrl.value) {
     URL.revokeObjectURL(viewerImageUrl.value);
     viewerImageUrl.value = '';
   }
 }
 
-async function loadImage(id) {
+async function loadImage(id: number): Promise<void> {
   if (typeof id !== 'number') {
     return;
   }
@@ -37,8 +46,8 @@ async function loadImage(id) {
     if (!response.ok) {
       let errorMessage = "L'image n'a pas pu etre chargee.";
       try {
-        const payload = await response.json();
-        errorMessage = payload?.detail || payload?.error || errorMessage;
+        const payload = (await response.json()) as ImageErrorPayload;
+        errorMessage = payload.detail || payload.error || errorMessage;
       } catch {
         const textPayload = await response.text();
         if (textPayload) {
@@ -57,7 +66,7 @@ async function loadImage(id) {
   }
 }
 
-function close() {
+function close(): void {
   emit('close');
 }
 

@@ -1,13 +1,14 @@
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
 import TopMenu from './components/TopMenu.vue';
 import UploadPanel from './components/UploadPanel.vue';
 import ImageListPanel from './components/ImageListPanel.vue';
+import type { AppView } from './types/app';
 
-const activeView = ref('upload');
-const listRefreshToken = ref(0);
+const activeView = ref<AppView>('upload');
+const listRefreshToken = ref<number>(0);
 
-function switchView(nextView) {
+function switchView(nextView: AppView): void {
   activeView.value = nextView;
 
   if (nextView === 'list') {

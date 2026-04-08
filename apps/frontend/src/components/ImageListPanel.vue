@@ -1,50 +1,79 @@
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 import ImageViewerModal from './ImageViewerModal.vue';
-import { routes } from '../config/routes.js';
+import { routes } from '../config/routes';
 
-const props = defineProps({
-  refreshToken: {
-    type: Number,
-    default: 0
+interface ImageItem {
+  id: number;
+  [key: string]: unknown;
+}
+
+interface ImagesMeta {
+  page: number;
+  total_pages: number;
+  total: number;
+}
+
+interface ImagesListPayload {
+  data?: unknown;
+  meta?: Partial<ImagesMeta>;
+  detail?: string;
+  error?: string;
+}
+
+const props = withDefaults(
+  defineProps<{
+    refreshToken?: number;
+  }>(),
+  {
+    refreshToken: 0
   }
-});
+);
 
-const images = ref([]);
-const imagesMeta = ref(null);
-const listPage = ref(1);
-const isListLoading = ref(false);
-const listError = ref('');
+const images = ref<ImageItem[]>([]);
+const imagesMeta = ref<ImagesMeta | null>(null);
+const listPage = ref<number>(1);
+const isListLoading = ref<boolean>(false);
+const listError = ref<string>('');
 
-const selectedImageId = ref(null);
+const selectedImageId = ref<number | null>(null);
 
-function prettyJson(value) {
+function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function canGoPrevious() {
-  return Boolean(imagesMeta.value?.page > 1);
+function canGoPrevious(): boolean {
+  const page = imagesMeta.value?.page ?? 1;
+  return page > 1;
 }
 
-function canGoNext() {
-  return Boolean(imagesMeta.value?.page < imagesMeta.value?.total_pages);
+function canGoNext(): boolean {
+  const page = imagesMeta.value?.page ?? 1;
+  const totalPages = imagesMeta.value?.total_pages ?? 1;
+  return page < totalPages;
 }
 
-async function loadImages(targetPage = 1) {
+async function loadImages(targetPage = 1): Promise<void> {
   isListLoading.value = true;
   listError.value = '';
 
   try {
     const response = await fetch(`${routes.images}?page=${targetPage}&per_page=5`);
-    const payload = await response.json();
+    const payload = (await response.json()) as ImagesListPayload;
 
     if (!response.ok) {
-      throw new Error(payload?.detail || payload?.error || 'Impossible de charger les images.');
+      throw new Error(payload.detail || payload.error || 'Impossible de charger les images.');
     }
 
-    images.value = Array.isArray(payload?.data) ? payload.data : [];
-    imagesMeta.value = payload?.meta ?? null;
-    listPage.value = payload?.meta?.page ?? targetPage;
+    images.value = Array.isArray(payload.data) ? (payload.data as ImageItem[]) : [];
+    imagesMeta.value = payload.meta
+      ? {
+          page: payload.meta.page ?? targetPage,
+          total_pages: payload.meta.total_pages ?? 1,
+          total: payload.meta.total ?? images.value.length
+        }
+      : null;
+    listPage.value = imagesMeta.value?.page ?? targetPage;
   } catch (err) {
     listError.value = err instanceof Error ? err.message : 'Erreur inconnue.';
   } finally {
@@ -52,11 +81,11 @@ async function loadImages(targetPage = 1) {
   }
 }
 
-function showImage(imageId) {
+function showImage(imageId: number): void {
   selectedImageId.value = imageId;
 }
 
-function closeImageModal() {
+function closeImageModal(): void {
   selectedImageId.value = null;
 }
 
